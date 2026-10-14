@@ -32,6 +32,27 @@ python gemini_web2api.py
 
 Server chạy tại `http://localhost:8081/v1`.
 
+### Windows: cài nhanh các ứng dụng bằng một lệnh
+
+Mở PowerShell tại thư mục repository rồi chạy:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+Script tự cài `httpx` nếu máy chưa có, tạo hoặc cập nhật cấu hình server, rồi
+cấu hình OpenCode, ứng dụng ChatGPT/Codex và extension Claude Code trong VS Code
+dùng model `gemini-3.8-flash`. Server được chạy ẩn trên `127.0.0.1`. Chạy xong,
+đóng rồi mở lại OpenCode, ứng dụng ChatGPT/Codex và VS Code. Cần cài sẵn
+extension Claude Code trong VS Code. Phần Claude cấu hình extension VS Code,
+không cấu hình ứng dụng Claude Desktop.
+
+Cấu hình client hiện có được gộp và sao lưu tại
+`%LOCALAPPDATA%\Gemini Web2API\backups`. API key được tạo trên máy, lưu trong
+`config.json` đã được Git ignore và các file cấu hình client. Server chạy trong
+phiên Windows hiện tại; sau khi khởi động lại Windows, chạy lại lệnh setup.
+Log nằm tại `%LOCALAPPDATA%\Gemini Web2API\server.log` và `server-error.log`.
+
 ## Cấu hình client
 
 ### Cherry Studio / ChatBox / client tương thích OpenAI

@@ -32,6 +32,28 @@ python gemini_web2api.py
 
 Server starts at `http://localhost:8081/v1`.
 
+### Windows: one-command client setup
+
+From the repository folder, run this in PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+The script installs the optional `httpx` dependency if needed, creates or updates
+the local server config, then configures OpenCode, the Codex desktop app, and the
+Claude Code VS Code extension to use `gemini-3.8-flash`. It starts the server in
+the background on `127.0.0.1`. Restart OpenCode, the ChatGPT/Codex app, and VS
+Code after the command completes. The Claude Code extension must already be
+installed in VS Code; this configures the VS Code extension, not Claude Desktop.
+
+Existing client settings are merged and backed up under
+`%LOCALAPPDATA%\Gemini Web2API\backups`. The API key is generated locally and
+stored in ignored `config.json` plus the client settings. The server runs for the
+current Windows session; run the setup command again after restarting Windows.
+Logs are written to `%LOCALAPPDATA%\Gemini Web2API\server.log` and
+`server-error.log`.
+
 ## Client Configuration
 
 ### Cherry Studio / ChatBox / any OpenAI client
