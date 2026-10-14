@@ -40,12 +40,14 @@ From the repository folder, run this in PowerShell:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-The script installs the optional `httpx` dependency if needed, creates or updates
-the local server config, then configures OpenCode, the Codex desktop app, and the
-Claude Code VS Code extension to use `gemini-3.8-flash`. It starts the server in
-the background on `127.0.0.1`. Restart OpenCode, the ChatGPT/Codex app, and VS
-Code after the command completes. The Claude Code extension must already be
-installed in VS Code; this configures the VS Code extension, not Claude Desktop.
+The script installs the optional `httpx` dependency if needed and creates or
+updates the local server and client configs. OpenCode defaults to **GW - Gemini
+4 Argon**; the Codex desktop app and Claude Code VS Code extension use
+`gemini-3.8-flash`. Argon requires an eligible Gemini account and cookie. The
+server runs in the background on `127.0.0.1`. Restart OpenCode, the ChatGPT/Codex
+app, and VS Code after the command completes. The Claude Code extension must
+already be installed in VS Code; this configures the VS Code extension, not
+Claude Desktop.
 
 Existing client settings are merged and backed up under
 `%LOCALAPPDATA%\Gemini Web2API\backups`. The API key is generated locally and
@@ -110,7 +112,7 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "gemini-web2api/gemini-3.8-flash",
+  "model": "gemini-web2api/gemini-4-argon",
   "provider": {
     "gemini-web2api": {
       "npm": "@ai-sdk/openai-compatible",
@@ -120,7 +122,8 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
         "apiKey": "{env:GEMINI_WEB2API_API_KEY}"
       },
       "models": {
-        "gemini-3.8-flash": { "name": "Gemini 3.8 Flash" }
+        "gemini-4-argon": { "name": "GW - Gemini 4 Argon" },
+        "gemini-3.8-flash": { "name": "GW - Gemini 3.8 Flash" }
       }
     }
   }
@@ -204,7 +207,7 @@ if ($auth.gemini_bl) { $config | Add-Member -MemberType NoteProperty -Name gemin
 [System.IO.File]::WriteAllText($configPath, (($config | ConvertTo-Json -Depth 100) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
 ```
 
-Restart the server so it reloads both files, then restart OpenCode and select `gemini-4-argon`. To start the server manually, run `python gemini_web2api.py` from the repository root. See [`gemini-cookie-sync-extension/SETUP.md`](gemini-cookie-sync-extension/SETUP.md) for the full steps. A valid session does not grant access to models the account's plan cannot use.
+Restart the server so it reloads both files, then restart OpenCode. It defaults to **GW - Gemini 4 Argon**. To start the server manually, run `python gemini_web2api.py` from the repository root. See [`gemini-cookie-sync-extension/SETUP.md`](gemini-cookie-sync-extension/SETUP.md) for the full steps. A valid session does not grant access to models the account's plan cannot use.
 
 If **Inspect session** reports missing XSRF, refresh Gemini and inspect again. If an authenticated request still returns HTTP 400 with an `xsrf` error, export a fresh file and restart the server. The extension exports `auth_user`, `xsrf_token`, and `gemini_bl` alongside the cookie.
 

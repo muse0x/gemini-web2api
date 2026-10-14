@@ -55,7 +55,7 @@ Stop the current server and start it again from the repository root so it reload
 python .\gemini_web2api.py
 ```
 
-Then restart OpenCode and select `gemini-4-argon`. Keep `gemini-auth.json` private; it is already ignored by Git. The cookie grants only the access the Google account's plan permits.
+Then restart OpenCode and select **GW - Gemini 4 Argon**. Keep `gemini-auth.json` private; it is already ignored by Git. The cookie grants only the access the Google account's plan permits.
 
 ## Linux/WSL: apply it in `gemini-web2api`
 

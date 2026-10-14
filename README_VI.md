@@ -40,9 +40,10 @@ Mở PowerShell tại thư mục repository rồi chạy:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-Script tự cài `httpx` nếu máy chưa có, tạo hoặc cập nhật cấu hình server, rồi
-cấu hình OpenCode, ứng dụng ChatGPT/Codex và extension Claude Code trong VS Code
-dùng model `gemini-3.8-flash`. Server được chạy ẩn trên `127.0.0.1`. Chạy xong,
+Script tự cài `httpx` nếu máy chưa có và tạo/cập nhật cấu hình server cùng các
+client. OpenCode mặc định chọn **GW - Gemini 4 Argon**; ứng dụng ChatGPT/Codex
+và extension Claude Code trong VS Code dùng `gemini-3.8-flash`. Argon cần tài
+khoản Gemini đủ điều kiện và cookie. Server chạy ẩn trên `127.0.0.1`. Chạy xong,
 đóng rồi mở lại OpenCode, ứng dụng ChatGPT/Codex và VS Code. Cần cài sẵn
 extension Claude Code trong VS Code. Phần Claude cấu hình extension VS Code,
 không cấu hình ứng dụng Claude Desktop.
@@ -105,7 +106,7 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "gemini-web2api/gemini-3.8-flash",
+  "model": "gemini-web2api/gemini-4-argon",
   "provider": {
     "gemini-web2api": {
       "npm": "@ai-sdk/openai-compatible",
@@ -115,7 +116,8 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
         "apiKey": "{env:GEMINI_WEB2API_API_KEY}"
       },
       "models": {
-        "gemini-3.8-flash": { "name": "Gemini 3.8 Flash" }
+        "gemini-4-argon": { "name": "GW - Gemini 4 Argon" },
+        "gemini-3.8-flash": { "name": "GW - Gemini 3.8 Flash" }
       }
     }
   }
@@ -196,7 +198,7 @@ if ($auth.gemini_bl) { $config | Add-Member -MemberType NoteProperty -Name gemin
 [System.IO.File]::WriteAllText($configPath, (($config | ConvertTo-Json -Depth 100) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
 ```
 
-Khởi động lại server để nạp lại hai file, rồi mở lại OpenCode và chọn `gemini-4-argon`. Nếu chạy server thủ công, mở PowerShell tại thư mục repository rồi chạy `python gemini_web2api.py`. Xem đầy đủ các bước tại [`gemini-cookie-sync-extension/SETUP.md`](gemini-cookie-sync-extension/SETUP.md). Phiên đăng nhập hợp lệ không tự cấp quyền cho model mà gói Google của tài khoản không hỗ trợ.
+Khởi động lại server để nạp lại hai file, rồi mở lại OpenCode. Model mặc định sẽ là **GW - Gemini 4 Argon**. Nếu chạy server thủ công, mở PowerShell tại thư mục repository rồi chạy `python gemini_web2api.py`. Xem đầy đủ các bước tại [`gemini-cookie-sync-extension/SETUP.md`](gemini-cookie-sync-extension/SETUP.md). Phiên đăng nhập hợp lệ không tự cấp quyền cho model mà gói Google của tài khoản không hỗ trợ.
 
 Nếu **Inspect session** báo thiếu XSRF, tải lại Gemini rồi kiểm tra lại. Nếu request vẫn trả HTTP 400 có lỗi `xsrf`, xuất lại file rồi khởi động lại server. Extension xuất `auth_user`, `xsrf_token` và `gemini_bl` cùng cookie.
 

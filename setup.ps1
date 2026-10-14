@@ -100,9 +100,12 @@ Set-JsonProperty $openCode.provider "gemini-web2api" ([pscustomobject]@{
     npm = "@ai-sdk/openai-compatible"
     name = "Gemini Web2API"
     options = [pscustomobject]@{ baseURL = "$baseUrl/v1"; apiKey = $apiKey }
-    models = [pscustomobject]@{ "gemini-3.8-flash" = [pscustomobject]@{ name = "Gemini 3.8 Flash" } }
+    models = [pscustomobject]@{
+        "gemini-4-argon" = [pscustomobject]@{ name = "GW - Gemini 4 Argon" }
+        "gemini-3.8-flash" = [pscustomobject]@{ name = "GW - Gemini 3.8 Flash" }
+    }
 })
-Set-JsonProperty $openCode "model" "gemini-web2api/gemini-3.8-flash"
+Set-JsonProperty $openCode "model" "gemini-web2api/gemini-4-argon"
 if (-not $openCode.'$schema') { Set-JsonProperty $openCode '$schema' "https://opencode.ai/config.json" }
 Write-JsoncFile $openCodePath $openCode "opencode.json"
 
