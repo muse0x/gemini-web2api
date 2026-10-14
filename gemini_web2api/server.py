@@ -9,7 +9,15 @@ from socketserver import ThreadingMixIn
 from .config import CONFIG
 from .models import MODELS, resolve_model
 from .gemini import generate, generate_stream, log
-from .tools import messages_to_prompt, parse_tool_calls, google_contents_to_prompt, parse_google_function_calls
+from .tools import (
+    anthropic_messages_to_openai,
+    anthropic_tool_choice_to_openai,
+    anthropic_tools_to_openai,
+    messages_to_prompt,
+    parse_tool_calls,
+    google_contents_to_prompt,
+    parse_google_function_calls,
+)
 from .multimodal import detect_image_mime, fetch_image_bytes, upload_image
 from . import __version__
 
@@ -56,6 +64,15 @@ class GeminiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_anthropic_error(self, message, status=400, error_type="invalid_request_error"):
+        self.send_json({"type": "error", "error": {"type": error_type, "message": message}}, status)
+
+    def _write_anthropic_event(self, event_type, data):
+        self.wfile.write(
+            f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
+        )
+        self.wfile.flush()
 
     def _start_sse(self):
         self.send_response(200)
@@ -149,13 +166,21 @@ class GeminiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             if self.path.startswith("/v1") and not self._authorized():
-                self.send_json({"error": {"message": "invalid api key"}}, 401)
+                if self.path.startswith("/v1/messages"):
+                    self.send_anthropic_error("invalid api key", 401, "authentication_error")
+                else:
+                    self.send_json({"error": {"message": "invalid api key"}}, 401)
                 return
             body = self._read_request_body()
-            if self.path == "/v1/chat/completions":
+            request_path = self.path.split("?", 1)[0]
+            if request_path == "/v1/chat/completions":
                 self._handle_chat(body)
-            elif self.path == "/v1/responses":
+            elif request_path == "/v1/responses":
                 self._handle_responses(body)
+            elif request_path == "/v1/messages/count_tokens":
+                self.send_anthropic_error("token counting is not supported", 404, "not_found_error")
+            elif request_path == "/v1/messages":
+                self._handle_messages(body)
             elif ":streamGenerateContent" in self.path:
                 self._handle_google_generate(body, stream=True)
             elif ":generateContent" in self.path:
@@ -170,6 +195,190 @@ class GeminiHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": {"message": str(e)}}, 500)
             except:
                 pass
+
+    def _handle_messages(self, body: bytes):
+        req = self._parse_body(body)
+        if not isinstance(req, dict):
+            self.send_anthropic_error("invalid JSON")
+            return
+        if not isinstance(req.get("messages"), list):
+            self.send_anthropic_error("messages must be an array")
+            return
+        if not isinstance(req.get("max_tokens"), int) or isinstance(req["max_tokens"], bool) or req["max_tokens"] < 1:
+            self.send_anthropic_error("max_tokens must be a positive integer")
+            return
+        invalid_messages = any(
+            not isinstance(message, dict)
+            or message.get("role") not in ("user", "assistant")
+            or not isinstance(message.get("content", ""), (str, list))
+            or (isinstance(message.get("content"), list)
+                and any(not isinstance(part, dict) for part in message["content"]))
+            for message in req["messages"]
+        )
+        invalid_system = (
+            isinstance(req.get("system"), list)
+            and any(not isinstance(part, dict) for part in req["system"])
+        )
+        if invalid_messages or invalid_system:
+            self.send_anthropic_error("messages and system blocks must use valid Anthropic formats")
+            return
+        if req.get("tools") is not None and not isinstance(req["tools"], list):
+            self.send_anthropic_error("tools must be an array")
+            return
+        if not isinstance(req.get("system", ""), (str, list)):
+            self.send_anthropic_error("system must be a string or an array")
+            return
+
+        model_name, model_id, think_mode, err, extra_fields = resolve_model(
+            req.get("model", CONFIG["default_model"]))
+        if err:
+            self.send_anthropic_error(err)
+            return
+
+        tools = anthropic_tools_to_openai(req.get("tools") or [])
+        tool_choice = anthropic_tool_choice_to_openai(req.get("tool_choice"))
+        prompt, images = messages_to_prompt(
+            anthropic_messages_to_openai(req.get("system", ""), req["messages"]),
+            tools,
+            tool_choice,
+        )
+        if not prompt.strip():
+            self.send_anthropic_error("empty messages")
+            return
+
+        try:
+            file_refs = _upload_images(images)
+        except RuntimeError as e:
+            self.send_anthropic_error(f"upstream error: {e}", 502, "api_error")
+            return
+
+        stream = req.get("stream") is True
+        response_id = f"msg_{uuid.uuid4().hex[:24]}"
+        input_tokens = len(prompt) // 4
+        tool_enabled = bool(tools) and tool_choice != "none"
+
+        if stream:
+            self._start_sse()
+            self._write_anthropic_event("message_start", {
+                "type": "message_start",
+                "message": {
+                    "id": response_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": model_name,
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": input_tokens, "output_tokens": 0},
+                },
+            })
+
+            try:
+                text_parts = []
+                tool_calls = None
+                if tool_enabled:
+                    for delta in generate_stream(prompt, model_id, think_mode, file_refs, extra_fields):
+                        if delta:
+                            text_parts.append(delta)
+                            self._write_anthropic_event("ping", {"type": "ping"})
+                    text = "".join(text_parts)
+                    if text:
+                        text, tool_calls = parse_tool_calls(text)
+                    content = ([{"type": "text", "text": text}] if text else []) + [
+                        {
+                            "type": "tool_use",
+                            "id": call["id"],
+                            "name": call["function"]["name"],
+                            "input": json.loads(call["function"]["arguments"]),
+                        }
+                        for call in tool_calls or []
+                    ]
+                    for index, block in enumerate(content):
+                        content_block = (
+                            {"type": "tool_use", "id": block["id"], "name": block["name"], "input": {}}
+                            if block["type"] == "tool_use"
+                            else {"type": "text", "text": ""}
+                        )
+                        self._write_anthropic_event("content_block_start", {
+                            "type": "content_block_start", "index": index,
+                            "content_block": content_block,
+                        })
+                        if block["type"] == "tool_use":
+                            self._write_anthropic_event("content_block_delta", {
+                                "type": "content_block_delta", "index": index,
+                                "delta": {"type": "input_json_delta", "partial_json": json.dumps(block["input"], ensure_ascii=False)},
+                            })
+                        else:
+                            self._write_anthropic_event("content_block_delta", {
+                                "type": "content_block_delta", "index": index,
+                                "delta": {"type": "text_delta", "text": block["text"]},
+                            })
+                        self._write_anthropic_event("content_block_stop", {
+                            "type": "content_block_stop", "index": index,
+                        })
+                else:
+                    self._write_anthropic_event("content_block_start", {
+                        "type": "content_block_start", "index": 0,
+                        "content_block": {"type": "text", "text": ""},
+                    })
+                    for delta in generate_stream(prompt, model_id, think_mode, file_refs, extra_fields):
+                        if delta:
+                            text_parts.append(delta)
+                            self._write_anthropic_event("content_block_delta", {
+                                "type": "content_block_delta", "index": 0,
+                                "delta": {"type": "text_delta", "text": delta},
+                            })
+                    text = "".join(text_parts)
+                    self._write_anthropic_event("content_block_stop", {
+                        "type": "content_block_stop", "index": 0,
+                    })
+
+                stop_reason = "tool_use" if tool_calls else "end_turn"
+                self._write_anthropic_event("message_delta", {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+                    "usage": {"output_tokens": len(text or "") // 4},
+                })
+                self._write_anthropic_event("message_stop", {"type": "message_stop"})
+            except Exception as e:
+                log(f"Anthropic stream error: {e}")
+                self._write_anthropic_event("error", {
+                    "type": "error", "error": {"type": "api_error", "message": str(e)},
+                })
+                self._write_anthropic_event("message_stop", {"type": "message_stop"})
+            return
+
+        try:
+            text = generate(prompt, model_id, think_mode, file_refs, extra_fields)
+        except Exception as e:
+            self.send_anthropic_error(f"upstream error: {e}", 502, "api_error")
+            return
+
+        tool_calls = None
+        if tool_enabled and text:
+            text, tool_calls = parse_tool_calls(text)
+        content = ([{"type": "text", "text": text}] if text else []) + [
+            {
+                "type": "tool_use",
+                "id": call["id"],
+                "name": call["function"]["name"],
+                "input": json.loads(call["function"]["arguments"]),
+            }
+            for call in tool_calls or []
+        ]
+        self.send_json({
+            "id": response_id,
+            "type": "message",
+            "role": "assistant",
+            "content": content,
+            "model": model_name,
+            "stop_reason": "tool_use" if tool_calls else "end_turn",
+            "stop_sequence": None,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": len(text or "") // 4,
+            },
+        })
 
     # ─── /v1/chat/completions ─────────────────────────────────────────────────
 

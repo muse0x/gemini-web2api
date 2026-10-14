@@ -19,6 +19,8 @@ Convert Google Gemini's web interface into an OpenAI-compatible API. Zero cost, 
 - **Cross-Platform**: Pure Python, single optional dependency (`httpx` for streaming)
 - **Streaming**: SSE streaming support via `httpx`
 - **Codex CLI**: Responses API (`/v1/responses`) for OpenAI Codex integration
+- **OpenCode**: custom OpenAI-compatible provider using `/v1/chat/completions`
+- **Claude Code**: Anthropic Messages API (`/v1/messages`) with tool calls and SSE
 - **Gemini CLI**: Google native API (`/v1beta/models`) for Gemini CLI compatibility
 
 ## Quick Start
@@ -70,6 +72,55 @@ resp = client.chat.completions.create(
 )
 print(resp.choices[0].message.content)
 ```
+
+### OpenCode
+
+Add this provider to `opencode.json` and set `GEMINI_WEB2API_API_KEY` to a key
+from `config.json`. Replace the URL with your Cloudflare Worker URL when using
+the Worker deployment.
+
+In PowerShell, set the key for the current terminal session with:
+
+```powershell
+$env:GEMINI_WEB2API_API_KEY = "your-key"
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "gemini-web2api/gemini-3.8-flash",
+  "provider": {
+    "gemini-web2api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini Web2API",
+      "options": {
+        "baseURL": "http://127.0.0.1:8081/v1",
+        "apiKey": "{env:GEMINI_WEB2API_API_KEY}"
+      },
+      "models": {
+        "gemini-3.8-flash": { "name": "Gemini 3.8 Flash" }
+      }
+    }
+  }
+}
+```
+
+If API-key authentication is disabled, remove the `apiKey` field.
+
+### Claude Code
+
+In PowerShell, point Claude Code at the Anthropic-compatible endpoint and pass
+one of the Gemini model IDs:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8081"
+$env:ANTHROPIC_AUTH_TOKEN = "sk-your-key"
+claude --model gemini-3.8-flash
+```
+
+For Cloudflare Workers, use the Worker origin as `ANTHROPIC_BASE_URL`.
+Claude Code uses `/v1/messages`; this project translates its Messages API
+requests, tool calls, and streaming events to Gemini Web.
 
 ### Gemini CLI
 

@@ -13,10 +13,13 @@ Gemini Web2API là proxy chạy trên Cloudflare Workers, chuyển giao diện w
 - Luân phiên dấu vân tay trình duyệt, ngôn ngữ và nhiều cookie.
 - Tách cấu hình theo request để tránh các request đồng thời ghi đè cấu hình của nhau.
 - Hỗ trợ gọi công cụ theo định dạng OpenAI Function Calling.
+- Dùng được với OpenCode qua OpenAI-compatible provider.
+- Dùng được với Claude Code qua Anthropic Messages API (`/v1/messages`).
 
 ### Trường hợp sử dụng
 
 - Kết nối NextChat, Cherry Studio, ChatBox và các client tương thích OpenAI.
+- Kết nối OpenCode và Claude Code.
 - Dùng Gemini làm backend cho WorkBuddy hoặc công cụ tương tự.
 - Học tập, nghiên cứu và các dự án cá nhân quy mô nhỏ.
 
@@ -94,6 +97,42 @@ Nếu triển khai thành công, server trả về JSON tương tự:
 | API domain | `https://<ten-worker>.workers.dev` |
 | API path | `/v1/chat/completions` |
 | API Key | `sk-gemini` |
+
+### OpenCode
+
+Thêm provider này vào `opencode.json` và thay domain Worker của bạn:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "gemini-web2api/gemini-3.8-flash",
+  "provider": {
+    "gemini-web2api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini Web2API",
+      "options": {
+        "baseURL": "https://<ten-worker>.workers.dev/v1",
+        "apiKey": "sk-gemini"
+      },
+      "models": {
+        "gemini-3.8-flash": { "name": "Gemini 3.8 Flash" }
+      }
+    }
+  }
+}
+```
+
+### Claude Code
+
+Chạy bằng PowerShell, thay URL bằng domain Worker của bạn:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "https://<ten-worker>.workers.dev"
+$env:ANTHROPIC_AUTH_TOKEN = "sk-gemini"
+claude --model gemini-3.8-flash
+```
+
+Claude Code sẽ gọi endpoint `/v1/messages` của Worker.
 
 ### Thử bằng curl
 

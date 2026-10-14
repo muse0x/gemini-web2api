@@ -10,7 +10,11 @@ from gemini_web2api.config import CONFIG, DEFAULT_CONFIG
 from gemini_web2api.gemini import _build_payload
 from gemini_web2api.models import MODELS, resolve_model
 from gemini_web2api.server import GeminiHandler, ThreadedServer
-from gemini_web2api.tools import google_contents_to_prompt, messages_to_prompt
+from gemini_web2api.tools import (
+    anthropic_messages_to_openai,
+    google_contents_to_prompt,
+    messages_to_prompt,
+)
 
 
 def _decode_payload(payload):
@@ -97,6 +101,24 @@ class ModelCatalogTests(unittest.TestCase):
 
 
 class MessageParsingTests(unittest.TestCase):
+    def test_anthropic_messages_preserve_system_tool_result_and_image(self):
+        image_data = base64.b64encode(b"fake png").decode()
+        messages = anthropic_messages_to_openai(
+            [{"type": "text", "text": "Be concise"}],
+            [{"role": "user", "content": [
+                {"type": "text", "text": "Describe"},
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": "image/png", "data": image_data,
+                }},
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "done"},
+            ]}],
+        )
+        prompt, images = messages_to_prompt(messages)
+
+        self.assertIn("[System instruction]: Be concise", prompt)
+        self.assertIn("[Tool result for toolu_1]: done", prompt)
+        self.assertEqual(images, [(b"fake png", "image/png")])
+
     def test_messages_to_prompt_extracts_openai_image_url_data_url(self):
         image_data = base64.b64encode(b"fake png").decode()
 
@@ -164,6 +186,143 @@ class MessageParsingTests(unittest.TestCase):
 
         self.assertEqual(prompt, "Describe")
         self.assertEqual(images, [])
+
+
+class AnthropicMessagesTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = ThreadedServer(("127.0.0.1", 0), GeminiHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.port = cls.server.server_address[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=5)
+
+    def setUp(self):
+        self.original_config = dict(CONFIG)
+        CONFIG["api_keys"] = []
+        CONFIG["log_requests"] = False
+
+    def tearDown(self):
+        CONFIG.clear()
+        CONFIG.update(self.original_config)
+
+    def post_json(self, path, payload, headers=None):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        connection.request(
+            "POST",
+            path,
+            body=json.dumps(payload),
+            headers={"Content-Type": "application/json", **(headers or {})},
+        )
+        response = connection.getresponse()
+        result = response.status, dict(response.getheaders()), response.read().decode()
+        connection.close()
+        return result
+
+    @mock.patch("gemini_web2api.server.generate", return_value="Hello from Gemini")
+    def test_messages_returns_anthropic_response_shape(self, generate):
+        status, _, body = self.post_json("/v1/messages", {
+            "model": "gemini-3.6-flash",
+            "max_tokens": 1024,
+            "system": "Be concise",
+            "messages": [{"role": "user", "content": "hello"}],
+        })
+
+        response = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(response["type"], "message")
+        self.assertEqual(response["content"], [{"type": "text", "text": "Hello from Gemini"}])
+        self.assertEqual(response["stop_reason"], "end_turn")
+        self.assertIn("Be concise", generate.call_args.args[0])
+
+    @mock.patch(
+        "gemini_web2api.server.generate",
+        return_value='```tool_call\n{"name":"read_file","arguments":{"path":"README.md"}}\n```',
+    )
+    def test_messages_maps_tool_calls_and_choice(self, generate):
+        status, _, body = self.post_json("/v1/messages", {
+            "model": "gemini-3.6-flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [{"name": "read_file", "input_schema": {"type": "object"}}],
+            "tool_choice": {"type": "tool", "name": "read_file"},
+        })
+
+        response = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(response["stop_reason"], "tool_use")
+        self.assertEqual(response["content"][0]["type"], "tool_use")
+        self.assertEqual(response["content"][0]["name"], "read_file")
+        self.assertEqual(response["content"][0]["input"], {"path": "README.md"})
+        self.assertIn('"read_file"', generate.call_args.args[0])
+
+    @mock.patch("gemini_web2api.server.generate_stream", return_value=iter(["hel", "lo"]))
+    def test_messages_streams_anthropic_events_with_beta_query(self, _generate_stream):
+        status, headers, body = self.post_json("/v1/messages?beta=true", {
+            "model": "gemini-3.6-flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+        })
+
+        events = _decode_sse(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/event-stream")
+        self.assertEqual(
+            [event_type for event_type, _ in events],
+            ["message_start", "content_block_start", "content_block_delta", "content_block_delta",
+             "content_block_stop", "message_delta", "message_stop"],
+        )
+        self.assertEqual(events[2][1]["delta"]["text"], "hel")
+        self.assertEqual(events[3][1]["delta"]["text"], "lo")
+        self.assertEqual(events[-2][1]["delta"]["stop_reason"], "end_turn")
+
+    @mock.patch(
+        "gemini_web2api.server.generate_stream",
+        return_value=iter(['```tool_call\n{"name":"read_file","arguments":{"path":"README.md"}}\n```']),
+    )
+    def test_messages_stream_emits_anthropic_tool_use_block(self, _generate_stream):
+        status, _, body = self.post_json("/v1/messages", {
+            "model": "gemini-3.6-flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [{"name": "read_file", "input_schema": {"type": "object"}}],
+            "stream": True,
+        })
+
+        events = _decode_sse(body)
+        content_start = next(event for name, event in events if name == "content_block_start")
+        input_delta = next(event for name, event in events if name == "content_block_delta")
+        self.assertEqual(status, 200)
+        self.assertEqual(content_start["content_block"]["type"], "tool_use")
+        self.assertEqual(content_start["content_block"]["input"], {})
+        self.assertEqual(json.loads(input_delta["delta"]["partial_json"]), {"path": "README.md"})
+        self.assertEqual(events[-2][1]["delta"]["stop_reason"], "tool_use")
+
+    @mock.patch("gemini_web2api.server.generate", return_value="Authorized")
+    def test_messages_accepts_anthropic_auth_token_header(self, _generate):
+        CONFIG["api_keys"] = ["sk-gemini"]
+        status, _, body = self.post_json("/v1/messages", {
+            "model": "gemini-3.6-flash", "max_tokens": 16,
+            "messages": [{"role": "user", "content": "hello"}],
+        }, {"Authorization": "Bearer sk-gemini"})
+
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["content"][0]["text"], "Authorized")
+
+    def test_messages_rejects_malformed_content_blocks(self):
+        status, _, body = self.post_json("/v1/messages", {
+            "model": "gemini-3.6-flash", "max_tokens": 16,
+            "messages": [{"role": "user", "content": [None]}],
+        })
+
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)["type"], "error")
 
 
 class StreamingEndpointTests(unittest.TestCase):

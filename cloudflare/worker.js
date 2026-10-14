@@ -2265,6 +2265,305 @@ async function handleChatCompletions(request, body, config) {
   return sendSSE(streamBody);
 }
 
+function anthropicContentText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(function (part) { return part && part.type === 'text'; })
+    .map(function (part) { return part.text || ''; })
+    .join(' ');
+}
+
+function anthropicPartToOpenAI(part) {
+  if (!part) return null;
+  if (part.type === 'text') return { type: 'text', text: part.text || '' };
+  if (part.type === 'image') return { type: 'text', text: '[Image attached]' };
+  if (part.type === 'tool_result') {
+    return {
+      type: 'text',
+      text: '[Tool result for ' + (part.tool_use_id || '') + ']: ' + anthropicContentText(part.content),
+    };
+  }
+  return null;
+}
+
+function anthropicMessagesToOpenAI(body, toolChoice) {
+  var systemText = anthropicContentText(body.system);
+  var choiceInstruction = toolChoice === 'required'
+    ? 'You must call at least one available tool.'
+    : toolChoice && toolChoice.type === 'function'
+      ? 'You must call the tool "' + toolChoice.function.name + '".'
+      : '';
+  var systemMessages = [systemText, choiceInstruction]
+    .filter(function (text) { return text; })
+    .map(function (text) { return { role: 'system', content: text }; });
+  return systemMessages.concat((body.messages || []).filter(function (message) {
+    return message && typeof message === 'object';
+  }).map(function (message) {
+    var content = typeof message.content === 'string'
+      ? message.content
+      : (Array.isArray(message.content) ? message.content.map(anthropicPartToOpenAI).filter(Boolean) : '');
+    var toolCalls = message.role === 'assistant' && Array.isArray(message.content)
+      ? message.content.filter(function (part) { return part && part.type === 'tool_use'; }).map(function (part) {
+        return {
+          id: part.id || 'call_' + generateShortId(8),
+          type: 'function',
+          function: { name: part.name || '', arguments: JSON.stringify(part.input || {}) },
+        };
+      })
+      : [];
+    return {
+      role: message.role || 'user',
+      content: content,
+      ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+    };
+  }));
+}
+
+function anthropicToolsToOpenAI(tools) {
+  return (Array.isArray(tools) ? tools : []).filter(function (tool) {
+    return tool && typeof tool.name === 'string' && tool.name;
+  }).map(function (tool) {
+    return {
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description || '',
+        parameters: tool.input_schema || {},
+      },
+    };
+  });
+}
+
+function anthropicToolChoiceToOpenAI(toolChoice) {
+  if (!toolChoice || toolChoice.type === 'auto') return 'auto';
+  if (toolChoice.type === 'none') return 'none';
+  if (toolChoice.type === 'any') return 'required';
+  if (toolChoice.type === 'tool' && toolChoice.name) {
+    return { type: 'function', function: { name: toolChoice.name } };
+  }
+  return 'auto';
+}
+
+function anthropicMessageContent(message) {
+  var text = message && message.content;
+  var toolCalls = message && message.tool_calls || [];
+  return (text ? [{ type: 'text', text: text }] : []).concat(toolCalls.map(function (call) {
+    var input = {};
+    try { input = JSON.parse(call.function.arguments || '{}'); } catch (e) {}
+    return { type: 'tool_use', id: call.id, name: call.function.name, input: input };
+  }));
+}
+
+function anthropicStreamFromChat(request, chatBody, modelName, inputTokens, config) {
+  var encoder = new TextEncoder();
+  var messageId = 'msg_' + generateShortId(24);
+  var stream = new ReadableStream({
+    start: function (controller) {
+      var heartbeat = null;
+      var finished = false;
+      var textParts = [];
+      var toolCalls = {};
+      var nextContentIndex = 0;
+      var textBlockIndex = null;
+      var stopReason = 'end_turn';
+
+      var emit = function (eventType, data) {
+        controller.enqueue(encoder.encode('event: ' + eventType + '\ndata: ' + JSON.stringify(data) + '\n\n'));
+      };
+      var finish = function () {
+        if (finished) return;
+        finished = true;
+        clearInterval(heartbeat);
+        if (textBlockIndex !== null) {
+          emit('content_block_stop', { type: 'content_block_stop', index: textBlockIndex });
+        }
+        Object.keys(toolCalls).sort(function (left, right) { return Number(left) - Number(right); }).forEach(function (key) {
+          var call = toolCalls[key];
+          var input = {};
+          try { input = JSON.parse(call.arguments || '{}'); } catch (e) {}
+          var index = nextContentIndex++;
+          emit('content_block_start', {
+            type: 'content_block_start', index: index,
+            content_block: { type: 'tool_use', id: call.id || 'toolu_' + generateShortId(16), name: call.name, input: {} },
+          });
+          emit('content_block_delta', {
+            type: 'content_block_delta', index: index,
+            delta: { type: 'input_json_delta', partial_json: call.arguments || JSON.stringify(input) },
+          });
+          emit('content_block_stop', { type: 'content_block_stop', index: index });
+        });
+        stopReason = Object.keys(toolCalls).length ? 'tool_use' : stopReason;
+        emit('message_delta', {
+          type: 'message_delta',
+          delta: { stop_reason: stopReason, stop_sequence: null },
+          usage: { output_tokens: estimateTokens(textParts.join('')) },
+        });
+        emit('message_stop', { type: 'message_stop' });
+        controller.close();
+      };
+      var fail = function (message) {
+        if (finished) return;
+        finished = true;
+        clearInterval(heartbeat);
+        emit('error', { type: 'error', error: { type: 'api_error', message: message } });
+        controller.close();
+      };
+
+      emit('message_start', {
+        type: 'message_start',
+        message: {
+          id: messageId, type: 'message', role: 'assistant', content: [], model: modelName,
+          stop_reason: null, stop_sequence: null, usage: { input_tokens: inputTokens, output_tokens: 0 },
+        },
+      });
+      heartbeat = setInterval(function () { emit('ping', { type: 'ping' }); }, 2000);
+
+      (async function () {
+        try {
+          var chatResponse = await handleChatCompletions(request, chatBody, config);
+          if (!chatResponse.ok) {
+            var errorBody = await chatResponse.json();
+            fail(errorBody.error && errorBody.error.message || 'upstream request failed');
+            return;
+          }
+          var reader = chatResponse.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = '';
+          var processLine = function (line) {
+            if (line.startsWith(':')) {
+              emit('ping', { type: 'ping' });
+              return;
+            }
+            if (!line.startsWith('data: ')) return;
+            var data = line.slice(6);
+            if (data === '[DONE]') {
+              finish();
+              return;
+            }
+            var chunk;
+            try { chunk = JSON.parse(data); } catch (e) { return; }
+            var choice = chunk.choices && chunk.choices[0];
+            var delta = choice && choice.delta || {};
+            if (delta.content) {
+              if (textBlockIndex === null) {
+                textBlockIndex = nextContentIndex++;
+                emit('content_block_start', {
+                  type: 'content_block_start', index: textBlockIndex,
+                  content_block: { type: 'text', text: '' },
+                });
+              }
+              textParts.push(delta.content);
+              emit('content_block_delta', {
+                type: 'content_block_delta', index: textBlockIndex,
+                delta: { type: 'text_delta', text: delta.content },
+              });
+            }
+            (delta.tool_calls || []).forEach(function (call) {
+              var key = String(call.index || 0);
+              toolCalls[key] = toolCalls[key] || { id: '', name: '', arguments: '' };
+              if (call.id) toolCalls[key].id = call.id;
+              if (call.function && call.function.name) toolCalls[key].name += call.function.name;
+              if (call.function && call.function.arguments) toolCalls[key].arguments += call.function.arguments;
+            });
+            if (choice && choice.finish_reason) {
+              stopReason = choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn';
+              finish();
+            }
+          };
+
+          while (!finished) {
+            var result = await reader.read();
+            if (result.done) break;
+            buffer += decoder.decode(result.value, { stream: true });
+            var lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            lines.forEach(processLine);
+          }
+          if (!finished && buffer) processLine(buffer);
+          if (!finished) finish();
+        } catch (error) {
+          fail(error.message || String(error));
+        }
+      })();
+    },
+    cancel: function () {},
+  });
+  return sendSSE(stream);
+}
+
+async function handleAnthropicMessages(request, body, config) {
+  if (!body || !Array.isArray(body.messages)) {
+    return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'messages must be an array' } }, 400);
+  }
+  var invalidMessages = body.messages.some(function (message) {
+    return !message || typeof message !== 'object'
+      || (message.role !== 'user' && message.role !== 'assistant')
+      || (typeof message.content !== 'string' && !Array.isArray(message.content))
+      || (Array.isArray(message.content) && message.content.some(function (part) {
+        return !part || typeof part !== 'object';
+      }));
+  });
+  var invalidSystem = Array.isArray(body.system) && body.system.some(function (part) {
+    return !part || typeof part !== 'object';
+  });
+  if (invalidMessages || invalidSystem) {
+    return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'messages and system blocks must use valid Anthropic formats' } }, 400);
+  }
+  if ((body.tools !== undefined && !Array.isArray(body.tools))
+    || (body.system !== undefined && typeof body.system !== 'string' && !Array.isArray(body.system))) {
+    return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'tools and system must use their API array or string formats' } }, 400);
+  }
+  if (!Number.isInteger(body.max_tokens) || body.max_tokens < 1) {
+    return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens must be a positive integer' } }, 400);
+  }
+
+  var resolved = resolveModel(body.model || config.defaultModel);
+  if (resolved.error) {
+    return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: resolved.error } }, 400);
+  }
+  var toolChoice = anthropicToolChoiceToOpenAI(body.tool_choice);
+  var tools = anthropicToolsToOpenAI(body.tools);
+  var messages = anthropicMessagesToOpenAI(body, toolChoice);
+  var chatBody = {
+    model: resolved.modelName,
+    messages: messages,
+    tools: toolChoice === 'none' || !tools.length ? null : tools,
+    stream: body.stream === true,
+  };
+  var prompt = messagesToPrompt(chatBody.messages, chatBody.tools);
+  if (!prompt.trim()) {
+    return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'empty messages' } }, 400);
+  }
+  var inputTokens = estimateTokens(prompt);
+
+  if (chatBody.stream) return anthropicStreamFromChat(request, chatBody, resolved.modelName, inputTokens, config);
+
+  var chatResponse = await handleChatCompletions(request, chatBody, config);
+  var chatResult = await chatResponse.json();
+  if (!chatResponse.ok) {
+    return sendJSON({
+      type: 'error',
+      error: { type: 'api_error', message: chatResult.error && chatResult.error.message || 'upstream request failed' },
+    }, chatResponse.status);
+  }
+  var message = chatResult.choices && chatResult.choices[0] && chatResult.choices[0].message || {};
+  var stopReason = message.tool_calls && message.tool_calls.length ? 'tool_use' : 'end_turn';
+  return sendJSON({
+    id: 'msg_' + generateShortId(24),
+    type: 'message',
+    role: 'assistant',
+    content: anthropicMessageContent(message),
+    model: resolved.modelName,
+    stop_reason: stopReason,
+    stop_sequence: null,
+    usage: {
+      input_tokens: chatResult.usage && chatResult.usage.prompt_tokens || inputTokens,
+      output_tokens: chatResult.usage && chatResult.usage.completion_tokens || estimateTokens(message.content || ''),
+    },
+  });
+}
+
 /**
  * 处理 /v1/responses 请求（OpenAI Responses API）
  * 
@@ -2583,6 +2882,12 @@ export default {
     // 仅对 /v1 路径的请求进行密钥验证
     // /health 等公共端点不需要验证
     if (path.indexOf('/v1') === 0 && !checkApiKey(request, config)) {
+      if (path.indexOf('/v1/messages') === 0) {
+        return sendJSON({
+          type: 'error',
+          error: { type: 'authentication_error', message: 'invalid api key' },
+        }, 401);
+      }
       return sendJSON({
         error: { message: 'invalid api key' },
       }, 401);  // HTTP 401 Unauthorized
@@ -2655,6 +2960,9 @@ export default {
       try {
         body = await request.json();
       } catch (e) {
+        if (path === '/v1/messages') {
+          return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'invalid JSON' } }, 400);
+        }
         return sendJSON({ error: { message: 'invalid JSON' } }, 400);
       }
 
@@ -2667,6 +2975,18 @@ export default {
       // ---- OpenAI Responses API（Codex CLI 兼容） ----
       if (path === '/v1/responses') {
         return handleResponses(request, body, config);
+      }
+
+      // ---- Anthropic Messages API (Claude Code compatible) ----
+      if (path === '/v1/messages') {
+        return handleAnthropicMessages(request, body, config);
+      }
+
+      if (path === '/v1/messages/count_tokens') {
+        return sendJSON({
+          type: 'error',
+          error: { type: 'not_found_error', message: 'token counting is not supported' },
+        }, 404);
       }
 
       // ---- Google 原生 streamGenerateContent（流式） ----

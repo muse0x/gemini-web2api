@@ -194,6 +194,98 @@ def parse_tool_calls(text: str) -> tuple:
     return clean, tool_calls
 
 
+def _anthropic_content_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return " ".join(
+        part.get("text", "") for part in content
+        if isinstance(part, dict) and part.get("type") == "text"
+    )
+
+
+def _anthropic_part_to_openai(part: dict):
+    if not isinstance(part, dict):
+        return None
+    if part.get("type") == "text":
+        return {"type": "text", "text": part.get("text", "")}
+    if part.get("type") == "image":
+        source = part.get("source")
+        if not isinstance(source, dict):
+            return None
+        if source.get("type") == "base64" and source.get("data"):
+            mime = source.get("media_type", "image/png")
+            return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{source['data']}"}}
+        if source.get("type") == "url" and source.get("url"):
+            return {"type": "image_url", "image_url": {"url": source["url"]}}
+    if part.get("type") == "tool_result":
+        result = _anthropic_content_text(part.get("content", ""))
+        return {"type": "text", "text": f"[Tool result for {part.get('tool_use_id', '')}]: {result}"}
+    return None
+
+
+def _anthropic_message_to_openai(message: dict) -> dict:
+    content = message.get("content", "")
+    content = content if isinstance(content, str) else [
+        converted for converted in map(_anthropic_part_to_openai, content or []) if converted
+    ]
+    tool_calls = [
+        {
+            "id": part.get("id", f"call_{uuid.uuid4().hex[:8]}"),
+            "type": "function",
+            "function": {
+                "name": part.get("name", ""),
+                "arguments": json.dumps(part.get("input", {}), ensure_ascii=False),
+            },
+        }
+        for part in message.get("content", [])
+        if message.get("role") == "assistant" and isinstance(part, dict) and part.get("type") == "tool_use"
+    ]
+    return {
+        "role": message.get("role", "user"),
+        "content": content,
+        **({"tool_calls": tool_calls} if tool_calls else {}),
+    }
+
+
+def anthropic_messages_to_openai(system, messages: list) -> list:
+    system_text = _anthropic_content_text(system)
+    system_message = [{"role": "system", "content": system_text}] if system_text else []
+    return system_message + [
+        _anthropic_message_to_openai(message)
+        for message in messages
+        if isinstance(message, dict)
+    ]
+
+
+def anthropic_tools_to_openai(tools: list) -> list:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.get("name", ""),
+                "description": tool.get("description", ""),
+                "parameters": tool.get("input_schema", {}),
+            },
+        }
+        for tool in tools
+        if isinstance(tool, dict) and tool.get("name")
+    ]
+
+
+def anthropic_tool_choice_to_openai(tool_choice):
+    if not isinstance(tool_choice, dict):
+        return "auto"
+    if tool_choice.get("type") == "none":
+        return "none"
+    if tool_choice.get("type") == "any":
+        return "required"
+    if tool_choice.get("type") == "tool" and tool_choice.get("name"):
+        return {"type": "function", "function": {"name": tool_choice["name"]}}
+    return "auto"
+
+
 # ─── Google Native API helpers ─────────────────────────────────────────────────
 
 

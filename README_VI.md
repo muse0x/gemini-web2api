@@ -19,6 +19,8 @@ Chuyển giao diện web Google Gemini thành API tương thích OpenAI. Miễn 
 - **Đa nền tảng**: Python thuần; `httpx` là thư viện tùy chọn để dùng streaming.
 - **Streaming**: hỗ trợ SSE qua `httpx`.
 - **Codex CLI**: hỗ trợ Responses API (`/v1/responses`) cho OpenAI Codex.
+- **OpenCode**: cấu hình custom provider tương thích OpenAI qua `/v1/chat/completions`.
+- **Claude Code**: hỗ trợ Anthropic Messages API (`/v1/messages`), tool call và SSE.
 - **Gemini CLI**: hỗ trợ API gốc của Google (`/v1beta/models`).
 
 ## Bắt đầu nhanh
@@ -66,6 +68,54 @@ resp = client.chat.completions.create(
 )
 print(resp.choices[0].message.content)
 ```
+
+### OpenCode
+
+Thêm cấu hình provider này vào `opencode.json`, rồi đặt `GEMINI_WEB2API_API_KEY`
+bằng một key trong `config.json`. Nếu dùng Cloudflare Worker, thay URL bằng địa chỉ
+Worker của bạn.
+
+Trong PowerShell, đặt key cho phiên terminal hiện tại:
+
+```powershell
+$env:GEMINI_WEB2API_API_KEY = "your-key"
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "gemini-web2api/gemini-3.8-flash",
+  "provider": {
+    "gemini-web2api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini Web2API",
+      "options": {
+        "baseURL": "http://127.0.0.1:8081/v1",
+        "apiKey": "{env:GEMINI_WEB2API_API_KEY}"
+      },
+      "models": {
+        "gemini-3.8-flash": { "name": "Gemini 3.8 Flash" }
+      }
+    }
+  }
+}
+```
+
+Nếu server không bật xác thực API key, xóa trường `apiKey`.
+
+### Claude Code
+
+Trong PowerShell, trỏ Claude Code đến endpoint Anthropic và chọn một model Gemini:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8081"
+$env:ANTHROPIC_AUTH_TOKEN = "sk-your-key"
+claude --model gemini-3.8-flash
+```
+
+Khi dùng Cloudflare Worker, đặt `ANTHROPIC_BASE_URL` thành domain Worker. Claude Code
+gửi request đến `/v1/messages`; server chuyển đổi Messages API, tool call và sự kiện
+streaming sang định dạng Gemini Web.
 
 ### Gemini CLI
 
