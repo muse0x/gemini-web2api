@@ -66,7 +66,7 @@ https://你的worker.workers.dev/health
   "status": "ok",
   "version": "1.5.0-cf-multifingerprint",
   "platform": "Cloudflare Workers",
-  "models": ["gemini-3.6-flash", "gemini-3.5-flash", "..."],
+  "models": ["gemini-4-argon", "gemini-3.8-flash", "..."],
   "hasCookie": false,
   "hasSapisid": false
 }
@@ -83,7 +83,7 @@ https://你的worker.workers.dev/health
 | 接口类型 | OpenAI |
 | 接口地址 | `https://你的worker.workers.dev/v1` |
 | API Key | `sk-gemini`（默认密钥） |
-| 模型 | `gemini-3.6-flash` |
+| 模型 | `gemini-3.8-flash` |
 
 ### Cherry Studio
 
@@ -91,7 +91,7 @@ https://你的worker.workers.dev/health
 |--------|-----|
 | API 地址 | `https://你的worker.workers.dev/v1` |
 | API 密钥 | `sk-gemini` |
-| 模型 | `gemini-3.6-flash` |
+| 模型 | `gemini-3.8-flash` |
 
 ### ChatBox
 
@@ -110,7 +110,7 @@ curl https://你的worker.workers.dev/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-gemini" \
   -d '{
-    "model": "gemini-3.6-flash",
+    "model": "gemini-3.8-flash",
     "messages": [{"role": "user", "content": "你好"}],
     "stream": false
   }'
@@ -120,7 +120,7 @@ curl -N https://你的worker.workers.dev/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-gemini" \
   -d '{
-    "model": "gemini-3.6-flash",
+    "model": "gemini-3.8-flash",
     "messages": [{"role": "user", "content": "讲个故事"}],
     "stream": true
   }'
@@ -145,7 +145,7 @@ curl -N https://你的worker.workers.dev/v1/chat/completions \
 | 变量名 | 说明 | 示例值 |
 |--------|------|--------|
 | `GEMINI_BL` | Gemini 构建标签（遇到 405 时更新） | `boq_assistant-bard-web-server_20260716.08_p0` |
-| `DEFAULT_MODEL` | 默认模型 | `gemini-3.6-flash` |
+| `DEFAULT_MODEL` | 默认模型 | `gemini-3.8-flash` |
 | `AUTH_USER` | 多账户索引 | `0` |
 
 ### 性能调优
@@ -269,17 +269,16 @@ SAPISID = "sapisid_1| sapisid_2| sapisid_3"
 
 | 模型 ID | 类型 | 说明 |
 |---------|------|------|
-| `gemini-3.6-flash` | FAST | 最新全能模型 |
-| `gemini-3.5-flash` | FAST | 3.6 Flash 的别名 |
-| `gemini-3.5-flash-thinking` | THINKING | 深度思考模式 |
-| `gemini-3.1-pro` | PRO | 专业版（需 Cookie） |
-| `gemini-auto` | AUTO | 自动模型选择 |
-| `gemini-3.5-flash-thinking-lite` | DYNAMIC | 自适应动态思考 |
-| `gemini-flash-lite` | LITE | 轻量级快速模型 |
+| `gemini-4-argon` | ARGON | 需要有权限的 Google AI 方案及 Cookie；category 7 为推断值 |
+| `gemini-3.8-flash` | FAST | 当前 Gemini Flash 模型 |
+| `gemini-3.6-flash` | FAST | 上一代 Flash 模型 |
+| `gemini-3.5-flash-lite` | FLASH_LITE | 快速且高效的模型 |
+| `gemini-3.1-pro-preview` | PRO | 预览模型；需要有权限的账号 Cookie |
+| `gemini-auto` | AUTO | 自动选择模型 |
 
 支持通过 `@think=` 参数覆盖思考模式：
-- `gemini-3.6-flash@think=0` — Flash 模型 + 深度思考
-- `gemini-3.1-pro@think=4` — Pro 模型 + 自动思考
+- `gemini-3.8-flash@think=0` — Flash 模型 + 深度思考
+- `gemini-3.1-pro-preview@think=4` — Pro 模型 + 自动思考
 
 ---
 

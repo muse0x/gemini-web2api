@@ -8,6 +8,7 @@ from urllib.parse import parse_qs
 
 from gemini_web2api.config import CONFIG, DEFAULT_CONFIG
 from gemini_web2api.gemini import _build_payload
+from gemini_web2api.models import MODELS, resolve_model
 from gemini_web2api.server import GeminiHandler, ThreadedServer
 from gemini_web2api.tools import google_contents_to_prompt, messages_to_prompt
 
@@ -66,6 +67,33 @@ class PayloadPersistenceTests(unittest.TestCase):
 
         self.assertEqual(inner[0][0], "describe")
         self.assertEqual(inner[0][3], [[None, None, "/uploaded/image-ref"]])
+
+
+class ModelCatalogTests(unittest.TestCase):
+    def test_catalog_contains_current_model_ids(self):
+        self.assertEqual(set(MODELS), {
+            "gemini-4-argon",
+            "gemini-3.8-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-pro-preview",
+            "gemini-auto",
+        })
+        self.assertEqual(DEFAULT_CONFIG["default_model"], "gemini-3.8-flash")
+
+    def test_legacy_model_aliases_resolve_to_current_ids(self):
+        self.assertEqual(
+            resolve_model("gemini-3.7-flash"),
+            ("gemini-3.8-flash", 1, 4, None, None),
+        )
+        self.assertEqual(
+            resolve_model("gemini-3.5-flash-thinking"),
+            ("gemini-3.8-flash", 1, 0, None, None),
+        )
+        self.assertEqual(
+            resolve_model("gemini-3.7-flash@think=2"),
+            ("gemini-3.8-flash", 1, 2, None, None),
+        )
 
 
 class MessageParsingTests(unittest.TestCase):

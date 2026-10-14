@@ -56,7 +56,7 @@ DEFAULT_CONFIG = {
     "gemini_bl": "boq_assistant-bard-web-server_20260716.08_p0",
     "auth_user": None,
     "xsrf_token": None,
-    "default_model": "gemini-3.6-flash",
+    "default_model": "gemini-3.8-flash",
     "log_requests": True,
     "cookie_file": None,
     "proxy": None,
@@ -67,42 +67,44 @@ DEFAULT_CONFIG = {
 CONFIG = dict(DEFAULT_CONFIG)
 
 # ─── Models ──────────────────────────────────────────────────────────────────
-# Mapping from JS source: MODE_CATEGORY enum (028-6eb337387583.js)
-#   1=FAST, 2=THINKING, 3=PRO, 4=AUTO, 5=FAST_DYNAMIC_THINKING, 6=FLASH_LITE
+# Mapping from Gemini Web MODE_CATEGORY values; ULTRA is inferred from the current frontend.
+#   1=FAST, 2=THINKING, 3=PRO, 4=AUTO, 5=FAST_DYNAMIC_THINKING, 6=FLASH_LITE, 7=ULTRA
 
 MODELS = {
-    "gemini-3.7-flash": {
+    "gemini-4-argon": {
+        "mode": 7, "think": 4,
+        "desc": "Gemini 4 Argon (requires a supported Google AI plan)",
+    },
+    "gemini-3.8-flash": {
         "mode": 1, "think": 4,
-        "desc": "Latest all-around model (Gemini 3.7 Flash)",
+        "desc": "Latest Gemini Flash model",
     },
     "gemini-3.6-flash": {
         "mode": 1, "think": 4,
-        "desc": "All-around model (Gemini 3.6 Flash)",
+        "desc": "Previous-generation Gemini Flash model",
     },
-    "gemini-3.5-flash": {
-        "mode": 1, "think": 4,
-        "desc": "Alias for gemini-3.6-flash (backend upgraded)",
+    "gemini-3.5-flash-lite": {
+        "mode": 6, "think": 4,
+        "desc": "Fast, cost-efficient Gemini Flash-Lite model",
     },
-    "gemini-3.5-flash-thinking": {
-        "mode": 2, "think": 0,
-        "desc": "Deep thinking mode, longest output (~20k chars)",
-    },
-    "gemini-3.1-pro": {
+    "gemini-3.1-pro-preview": {
         "mode": 3, "think": 4,
-        "desc": "Pro model (requires cookie for real routing)",
+        "desc": "Gemini 3.1 Pro preview (requires account cookie)",
     },
     "gemini-auto": {
         "mode": 4, "think": 4,
         "desc": "Auto model selection",
     },
-    "gemini-3.5-flash-thinking-lite": {
-        "mode": 5, "think": 0,
-        "desc": "Dynamic thinking with adaptive depth",
-    },
-    "gemini-flash-lite": {
-        "mode": 6, "think": 4,
-        "desc": "Lightweight fast model",
-    },
+}
+
+LEGACY_MODEL_ALIASES = {
+    "gemini-3.7-flash": ("gemini-3.8-flash", None),
+    "gemini-3.5-flash": ("gemini-3.6-flash", None),
+    "gemini-3.5-flash-thinking": ("gemini-3.8-flash", 0),
+    "gemini-3.5-flash-thinking-lite": ("gemini-3.8-flash", 0),
+    "gemini-3.1-pro": ("gemini-3.1-pro-preview", None),
+    "gemini-3.1-pro-enhanced": ("gemini-3.1-pro-preview", None),
+    "gemini-flash-lite": ("gemini-3.5-flash-lite", None),
 }
 
 # ─── Utilities ───────────────────────────────────────────────────────────────
@@ -757,6 +759,11 @@ class GeminiHandler(BaseHTTPRequestHandler):
         if "@think=" in model_name:
             model_name, think_str = model_name.rsplit("@think=", 1)
             think_override = int(think_str)
+        alias = LEGACY_MODEL_ALIASES.get(model_name)
+        if alias:
+            model_name, alias_think = alias
+            if think_override is None:
+                think_override = alias_think
         cfg = MODELS.get(model_name)
         if not cfg:
             return None, None, None, f"Unknown model: {model_name}"

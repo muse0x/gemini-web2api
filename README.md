@@ -13,7 +13,7 @@ Convert Google Gemini's web interface into an OpenAI-compatible API. Zero cost, 
 - **Optional API Keys**: no auth when `api_keys` is empty, OpenAI-style Bearer auth when configured
 - **OpenAI Compatible**: Drop-in replacement for `/v1/chat/completions` and `/v1/models`
 - **Tool Calling**: Full function calling support (OpenAI format)
-- **Multiple Models**: Flash (3.6), Extended Thinking (20k+ char output), Pro, Auto, Lite
+- **Multiple Models**: Gemini 4 Argon, 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Pro Preview, Auto
 - **Thinking Depth**: Adjustable via `@think=N` suffix (0=deepest, 4=shallowest)
 - **Web Search**: Built-in internet access (Gemini's native search)
 - **Cross-Platform**: Pure Python, single optional dependency (`httpx` for streaming)
@@ -38,7 +38,7 @@ Server starts at `http://localhost:8081/v1`.
 |-------|-------|
 | Base URL | `http://localhost:8081/v1` |
 | API Key | any `api_keys` value from `config.json`; anything if not configured |
-| Model | `gemini-3.5-flash-thinking` |
+| Model | `gemini-3.8-flash` |
 
 ### curl
 
@@ -48,13 +48,13 @@ Server starts at `http://localhost:8081/v1`.
 curl http://localhost:8081/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-your-key" \
-  -d '{"model":"gemini-3.5-flash","messages":[{"role":"user","content":"Hello!"}]}'
+  -d '{"model":"gemini-3.8-flash","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
 #### PowerShell (Windows)
 
 ```powershell
-curl.exe --% http://127.0.0.1:8081/v1/chat/completions -H "Content-Type: application/json" -H "Authorization: Bearer sk-your-key" -d "{\"model\":\"gemini-3.5-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}"
+curl.exe --% http://127.0.0.1:8081/v1/chat/completions -H "Content-Type: application/json" -H "Authorization: Bearer sk-your-key" -d "{\"model\":\"gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}"
 ```
 
 > Note: On Windows PowerShell, use `curl.exe` and `--%` so PowerShell does not reinterpret JSON quoting or curl options.
@@ -65,7 +65,7 @@ curl.exe --% http://127.0.0.1:8081/v1/chat/completions -H "Content-Type: applica
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8081/v1", api_key="sk-your-key")
 resp = client.chat.completions.create(
-    model="gemini-3.5-flash-thinking",
+    model="gemini-3.8-flash@think=0",
     messages=[{"role": "user", "content": "Explain quantum computing"}]
 )
 print(resp.choices[0].message.content)
@@ -86,29 +86,28 @@ Supports Google native API endpoints:
 
 ## Available Models
 
-| Model | Description | Output |
-|-------|-------------|--------|
-| `gemini-3.6-flash` | All-around model (latest) | ~12k chars |
-| `gemini-3.5-flash` | Alias for gemini-3.6-flash | ~12k chars |
-| `gemini-3.5-flash-thinking` | Extended thinking, longest output | **~20k chars** |
-| `gemini-3.5-flash-thinking-lite` | Adaptive thinking depth | ~15k chars |
-| `gemini-3.1-pro` | Advanced math & code (needs cookie) | ~12k chars |
-| `gemini-auto` | Auto model selection | varies |
-| `gemini-flash-lite` | Fastest answers, lightweight | ~10k chars |
+| Model ID | Tier | Notes |
+|-----------|------|-------|
+| `gemini-4-argon` | Argon | Requires an eligible Google AI plan and account cookie |
+| `gemini-3.8-flash` | Flash | Current Gemini Flash model |
+| `gemini-3.6-flash` | Flash | Previous-generation Flash model |
+| `gemini-3.5-flash-lite` | Flash-Lite | Fast, cost-efficient model |
+| `gemini-3.1-pro-preview` | Pro | Preview model; requires an eligible account cookie |
+| `gemini-auto` | Auto | Gemini selects a model |
 
 ### Thinking Depth
 
 Append `@think=N` to any model name:
 
 ```
-gemini-3.5-flash-thinking@think=0   # deepest (default)
-gemini-3.5-flash-thinking@think=2   # medium
-gemini-3.5-flash-thinking@think=4   # shallowest
+gemini-3.8-flash@think=0   # deepest
+gemini-3.8-flash@think=2   # medium
+gemini-3.8-flash@think=4   # automatic/shallowest
 ```
 
-## Optional: Cookie for Pro
+## Optional: Cookie for Pro and Argon
 
-Anonymous access works for all models, but `gemini-3.1-pro` routes to Flash without authentication. To get real Pro routing, you need a **Gemini Advanced (paid subscription)** account cookie:
+Pro and Argon availability depends on the Google AI plan and account. Configure a cookie from an eligible Google account for these tiers:
 
 ```bash
 python gemini_web2api.py --cookie-file cookie.txt
@@ -116,7 +115,7 @@ python gemini_web2api.py --cookie-file cookie.txt
 
 ### How to get cookies
 
-1. Open Chrome, go to [gemini.google.com](https://gemini.google.com) and sign in with a **Gemini Advanced** Google account
+1. Open Chrome, go to [gemini.google.com](https://gemini.google.com) and sign in with an eligible Google AI account
 2. Open DevTools (F12) → Application → Cookies → `https://gemini.google.com`
 3. Copy these cookie values: `SID`, `HSID`, `SSID`, `APISID`, `SAPISID`, `__Secure-1PSID`
 4. Create `cookie.txt` in this format:
@@ -155,7 +154,7 @@ Example:
 
 If authenticated requests return HTTP 400 with an `xsrf` error, refresh Gemini Web, update `xsrf_token`, and make sure `auth_user` matches the `/u/<index>/` part of the browser URL.
 
-Pro routing requires **Gemini Advanced** (paid subscription). A free Google account cookie will authenticate but silently fall back to Flash.
+Pro and Argon routing depend on the signed-in account's Google AI plan and current model access. A valid cookie alone does not grant access to plan-restricted tiers.
 
 ## Configuration
 
@@ -235,7 +234,7 @@ Works with Clash, V2Ray, Shadowsocks, or any HTTP proxy.
 
 ```python
 resp = client.chat.completions.create(
-    model="gemini-3.5-flash",
+    model="gemini-3.8-flash",
     messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
     tools=[{
         "type": "function",
@@ -255,7 +254,7 @@ Responses API. Use either HTTP(S) image URLs or base64 data URLs:
 
 ```python
 resp = client.chat.completions.create(
-    model="gemini-3.6-flash",
+    model="gemini-3.8-flash",
     messages=[{
         "role": "user",
         "content": [
@@ -269,7 +268,7 @@ resp = client.chat.completions.create(
 ## Limitations
 
 - **Image upload may require cookies**: Multimodal input uses Gemini Web's image upload endpoint. If anonymous upload fails, configure a Gemini cookie.
-- **Not real Pro/Ultra**: Without a paid subscription cookie, `gemini-3.1-pro` routes to the same Flash model. The "Pro" label is a UI preference, not a backend model switch.
+- **Plan-dependent tiers**: Pro and Argon routing depends on the signed-in account's plan and model availability.
 - **Single-turn only**: Each request is an independent conversation. Multi-turn context is simulated by including previous messages in the prompt.
 - **Rate limits**: Google may throttle high-frequency requests. The server retries automatically but sustained heavy use may be blocked.
 

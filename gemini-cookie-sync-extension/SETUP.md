@@ -93,7 +93,7 @@ curl -sS http://127.0.0.1:10012/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -d '{
-    "model": "gemini-3.1-pro",
+    "model": "gemini-3.1-pro-preview",
     "messages": [
       {
         "role": "user",

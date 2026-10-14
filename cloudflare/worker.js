@@ -103,7 +103,7 @@
  *    - GEMINI_BL: Gemini 构建标签
  *      遇到 405 错误时需要更新此值
  *      获取方法：浏览器打开 gemini.google.com -> F12 -> Network -> 搜索 "boq_assistant"
- *    - DEFAULT_MODEL: 默认模型名称，如 "gemini-3.6-flash"
+ *    - DEFAULT_MODEL: 默认模型名称，如 "gemini-3.8-flash"
  *    - AUTH_USER: 多账户索引，0=第一个账户，1=第二个账户
  * 
  *    【性能调优】
@@ -118,7 +118,7 @@
  * 客户端配置:
  *   基础URL: https://你的worker.workers.dev/v1
  *   API密钥: sk-gemini (或你在配置中设置的密钥)
- *   模型: gemini-3.6-flash
+ *   模型: gemini-3.8-flash
  * 
  * ============================================================================
  * 技术架构说明:
@@ -198,7 +198,7 @@ var DEFAULT_CONFIG = {
   // ---- 默认模型 ----
   // 当客户端请求未指定 model 参数时使用的默认模型
   // 可选值参考 MODELS 字典的键名
-  defaultModel: 'gemini-3.6-flash',
+  defaultModel: 'gemini-3.8-flash',
 
   // ---- API 密钥白名单 ----
   // 用于验证客户端请求的密钥列表
@@ -425,7 +425,7 @@ function getRandomSecChUaPlatform() {
 // ============================================================================
 // 🤖 模型定义
 // ============================================================================
-// 映射自 Gemini Web 前端 JS 源码中的 MODE_CATEGORY 枚举
+// 映射自 Gemini Web 前端 JS 源码中的 MODE_CATEGORY 枚举；ULTRA=7 为推断值。
 // 
 // mode 字段含义（MODE_CATEGORY 枚举值）：
 //   1 = FAST（快速模式）- Gemini Flash 系列，速度最快
@@ -434,47 +434,53 @@ function getRandomSecChUaPlatform() {
 //   4 = AUTO（自动选择）- 由 Gemini 自动选择最合适的模型
 //   5 = FAST_DYNAMIC_THINKING（动态思考）- 自适应思考深度
 //   6 = FLASH_LITE（轻量快速）- 最轻量模型，速度最快但质量较低
+//   7 = ULTRA（顶级推理）- 根据 Gemini Web 当前档位推断，尚未从前端源码确认
 // 
 // think 字段含义（思考模式）：
 //   0 = 启用深度思考（模型会花更多时间推理）
 //   4 = AUTO（自动选择思考深度，由 Gemini 决定）
 
 var MODELS = {
+  'gemini-4-argon': {
+    mode: 7,
+    think: 4,
+    desc: 'Gemini 4 Argon (requires a supported Google AI plan)',
+  },
+  'gemini-3.8-flash': {
+    mode: 1,
+    think: 4,
+    desc: 'Latest Gemini Flash model',
+  },
   'gemini-3.6-flash': {
-    mode: 1,        // FAST - 快速模式
-    think: 4,       // AUTO - 自动选择思考深度
-    desc: 'Latest all-around model (Gemini 3.6 Flash)',
+    mode: 1,
+    think: 4,
+    desc: 'Previous-generation Gemini Flash model',
   },
-  'gemini-3.5-flash': {
-    mode: 1,        // FAST
-    think: 4,       // AUTO
-    desc: 'Alias for gemini-3.6-flash (backend upgraded)',
+  'gemini-3.5-flash-lite': {
+    mode: 6,
+    think: 4,
+    desc: 'Fast, cost-efficient Gemini Flash-Lite model',
   },
-  'gemini-3.5-flash-thinking': {
-    mode: 2,        // THINKING - 深度思考模式
-    think: 0,       // 启用深度思考
-    desc: 'Deep thinking mode, longest output (~20k chars)',
-  },
-  'gemini-3.1-pro': {
-    mode: 3,        // PRO - 专业版
-    think: 4,       // AUTO
-    desc: 'Pro model (requires cookie for real routing)',
+  'gemini-3.1-pro-preview': {
+    mode: 3,
+    think: 4,
+    desc: 'Gemini 3.1 Pro preview (requires account cookie)',
   },
   'gemini-auto': {
-    mode: 4,        // AUTO - 自动模型选择
-    think: 4,       // AUTO
+    mode: 4,
+    think: 4,
     desc: 'Auto model selection',
   },
-  'gemini-3.5-flash-thinking-lite': {
-    mode: 5,        // FAST_DYNAMIC_THINKING - 动态思考
-    think: 0,       // 启用思考
-    desc: 'Dynamic thinking with adaptive depth',
-  },
-  'gemini-flash-lite': {
-    mode: 6,        // FLASH_LITE - 轻量快速
-    think: 4,       // AUTO
-    desc: 'Lightweight fast model',
-  },
+};
+
+var LEGACY_MODEL_ALIASES = {
+  'gemini-3.7-flash': ['gemini-3.8-flash', null],
+  'gemini-3.5-flash': ['gemini-3.6-flash', null],
+  'gemini-3.5-flash-thinking': ['gemini-3.8-flash', 0],
+  'gemini-3.5-flash-thinking-lite': ['gemini-3.8-flash', 0],
+  'gemini-3.1-pro': ['gemini-3.1-pro-preview', null],
+  'gemini-3.1-pro-enhanced': ['gemini-3.1-pro-preview', null],
+  'gemini-flash-lite': ['gemini-3.5-flash-lite', null],
 };
 
 // ============================================================================
@@ -694,7 +700,7 @@ function getRequestConfig(env) {
  * 使用 DEFAULT_CONFIG 的 logRequests 设置。
  * 
  * 日志格式: [HH:MM:SS] [LEVEL] message
- * 例如: [14:30:25] [INFO] Chat: model=gemini-3.6-flash, stream=true
+ * 例如: [14:30:25] [INFO] Chat: model=gemini-3.8-flash, stream=true
  * 
  * @param {string} msg - 要记录的日志消息
  * @param {string} [level] - 日志级别，默认 'INFO'。可选值: INFO / WARN / ERROR
@@ -893,7 +899,7 @@ function getAccountPrefix(config) {
  *   然后作为 f.req 参数的值进行 URL 编码
  * 
  * @param {string} prompt - 用户输入的提示文本
- * @param {number} modelId - 模型类别 ID（MODE_CATEGORY 枚举值: 1-6）
+ * @param {number} modelId - 模型类别 ID（MODE_CATEGORY 枚举值，ULTRA=7 为推断值）
  * @param {number} thinkMode - 思考模式设置（0=深度思考, 4=自动）
  * @param {Object} config - 请求级配置对象
  * @returns {string} URL 编码的请求体字符串，格式为 "f.req=..."
@@ -1125,7 +1131,7 @@ async function buildHeaders(config) {
  * 模拟人类操作的自然间隔，降低被检测为脚本的概率。
  * 
  * @param {string} prompt - 用户输入的提示文本
- * @param {number} modelId - 模型类别 ID（MODE_CATEGORY 枚举值: 1-6）
+ * @param {number} modelId - 模型类别 ID（MODE_CATEGORY 枚举值，ULTRA=7 为推断值）
  * @param {number} thinkMode - 思考模式设置（0=深度思考, 4=自动）
  * @param {Object} config - 请求级配置对象
  * @returns {Promise<string>} API 原始响应文本（包含嵌套 JSON）
@@ -1843,14 +1849,14 @@ function sendSSE(stream) {
  * 解析模型名称，获取对应的配置参数
  * 
  * 支持 @think= 参数来覆盖默认的思考模式。
- * 例如: "gemini-3.6-flash@think=0" 
+ * 例如: "gemini-3.8-flash@think=0"
  * 表示使用 Flash 模型但启用深度思考（think=0）。
  * 
  * @param {string} modelName - 模型名称
  *   格式: "模型名" 或 "模型名@think=数字"
  * @returns {Object} 
  *   - modelName: 去掉 @think= 参数后的实际模型名称
- *   - modelId: MODE_CATEGORY 枚举值（1-6）
+ *   - modelId: MODE_CATEGORY 枚举值（1-7，ULTRA=7 为推断值）
  *   - thinkMode: 思考模式（0=深度思考, 4=自动）
  *   - error: 错误信息，null 表示正常
  */
@@ -1866,6 +1872,12 @@ function resolveModel(modelName) {
     if (isNaN(thinkOverride)) {
       return { error: '无效的 think 参数: ' + parts[1] };
     }
+  }
+
+  var alias = LEGACY_MODEL_ALIASES[actualModelName];
+  if (alias) {
+    actualModelName = alias[0];
+    if (thinkOverride === null) thinkOverride = alias[1];
   }
 
   // 查找模型配置
@@ -2430,7 +2442,7 @@ async function handleResponses(request, body, config) {
  */
 async function handleGoogleAPI(request, body, stream, config) {
   // 从 URL 路径中提取模型名称
-  // 例如: /v1beta/models/gemini-3.6-flash:generateContent → "gemini-3.6-flash"
+  // 例如: /v1beta/models/gemini-3.8-flash:generateContent → "gemini-3.8-flash"
   var requestUrl = new URL(request.url);
   var match = requestUrl.pathname.match(/\/v1beta\/models\/([^:]+)/);
   var modelName = match ? match[1] : null;

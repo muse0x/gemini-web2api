@@ -13,7 +13,7 @@
 - **可选密钥**: `api_keys` 为空时免密, 填入密钥后按 OpenAI Bearer Key 校验
 - **OpenAI 兼容**: 直接替换 `/v1/chat/completions` 和 `/v1/models`
 - **工具调用**: 完整的 Function Calling 支持 (OpenAI 格式)
-- **多模型**: Flash (3.6), 扩展思考 (2万字+输出), Pro, Auto, Lite
+- **多模型**: Gemini 4 Argon、3.8 Flash、3.6 Flash、3.5 Flash-Lite、3.1 Pro Preview、Auto
 - **思考深度**: 通过 `@think=N` 后缀调节 (0=最深, 4=最浅)
 - **联网搜索**: 内置互联网访问 (Gemini 原生搜索能力)
 - **跨平台**: 纯 Python, 仅一个可选依赖 (`httpx` 用于流式输出)
@@ -38,7 +38,7 @@ python gemini_web2api.py
 |------|-----|
 | Base URL | `http://localhost:8081/v1` |
 | API Key | `config.json` 中的任意 `api_keys`；未配置时随便填 |
-| Model | `gemini-3.5-flash-thinking` |
+| Model | `gemini-3.8-flash` |
 
 ### curl
 
@@ -46,7 +46,7 @@ python gemini_web2api.py
 curl http://localhost:8081/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-your-key" \
-  -d '{"model":"gemini-3.5-flash","messages":[{"role":"user","content":"你好!"}]}'
+  -d '{"model":"gemini-3.8-flash","messages":[{"role":"user","content":"你好!"}]}'
 ```
 
 ### OpenAI Python SDK
@@ -55,7 +55,7 @@ curl http://localhost:8081/v1/chat/completions \
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8081/v1", api_key="sk-your-key")
 resp = client.chat.completions.create(
-    model="gemini-3.5-flash-thinking",
+    model="gemini-3.8-flash@think=0",
     messages=[{"role": "user", "content": "解释量子计算"}]
 )
 print(resp.choices[0].message.content)
@@ -76,29 +76,28 @@ gemini
 
 ## 可用模型
 
-| 模型 | 说明 | 输出量 |
-|------|------|--------|
-| `gemini-3.6-flash` | 全能模型 (最新) | ~1.2万字 |
-| `gemini-3.5-flash` | gemini-3.6-flash 别名 | ~1.2万字 |
-| `gemini-3.5-flash-thinking` | 扩展思考, 最长输出 | **~2万字** |
-| `gemini-3.5-flash-thinking-lite` | 自适应思考深度 | ~1.5万字 |
-| `gemini-3.1-pro` | 高级数学与代码 (需 cookie) | ~1.2万字 |
-| `gemini-auto` | 自动选择模型 | 不定 |
-| `gemini-flash-lite` | 最快响应, 轻量 | ~1万字 |
+| 模型 ID | 档位 | 说明 |
+|---------|------|------|
+| `gemini-4-argon` | Argon | 需要有权限的 Google AI 方案及账号 Cookie |
+| `gemini-3.8-flash` | Flash | 当前 Gemini Flash 模型 |
+| `gemini-3.6-flash` | Flash | 上一代 Flash 模型 |
+| `gemini-3.5-flash-lite` | Flash-Lite | 快速且高效的模型 |
+| `gemini-3.1-pro-preview` | Pro | 预览模型；需要有权限的账号 Cookie |
+| `gemini-auto` | Auto | 由 Gemini 自动选择模型 |
 
 ### 思考深度
 
 在模型名后追加 `@think=N`:
 
 ```
-gemini-3.5-flash-thinking@think=0   # 最深 (默认)
-gemini-3.5-flash-thinking@think=2   # 中等
-gemini-3.5-flash-thinking@think=4   # 最浅
+gemini-3.8-flash@think=0   # 最深
+gemini-3.8-flash@think=2   # 中等
+gemini-3.8-flash@think=4   # 自动/较浅
 ```
 
-## 可选: Cookie 配置 (Pro 模型)
+## 可选: Cookie 配置 (Pro 和 Argon)
 
-匿名访问对所有模型有效, 但 `gemini-3.1-pro` 在无认证时会路由到 Flash. 要获得真正的 Pro 路由, 需要 **Gemini Advanced (付费订阅)** 账号的 cookie:
+Pro 和 Argon 的可用性取决于 Google AI 方案和账号。请为这些档位配置有权限的 Google 账号 Cookie:
 
 ```bash
 python gemini_web2api.py --cookie-file cookie.txt
@@ -106,7 +105,7 @@ python gemini_web2api.py --cookie-file cookie.txt
 
 ### 如何获取 Cookie
 
-1. 打开 Chrome, 访问 [gemini.google.com](https://gemini.google.com) 并登录 **Gemini Advanced** 付费账号
+1. 打开 Chrome, 访问 [gemini.google.com](https://gemini.google.com) 并登录有权限的 Google AI 账号
 2. 打开开发者工具 (F12) → Application → Cookies → `https://gemini.google.com`
 3. 复制以下 cookie 值: `SID`, `HSID`, `SSID`, `APISID`, `SAPISID`, `__Secure-1PSID`
 4. 创建 `cookie.txt`, 格式如下:
@@ -145,7 +144,7 @@ https://gemini.google.com/u/1/app/...
 
 如果登录态请求返回 HTTP 400 且错误中包含 `xsrf`, 请刷新 Gemini Web 后更新 `xsrf_token`, 并确认 `auth_user` 与浏览器 URL 中的 `/u/<序号>/` 一致.
 
-Pro 路由需要 **Gemini Advanced** (付费订阅). 免费 Google 账号的 cookie 可以登录认证, 但会静默回退到 Flash.
+Pro 和 Argon 路由取决于登录账号的 Google AI 方案及当前模型权限。有效 Cookie 本身不会授予受方案限制的档位权限.
 
 ## 配置文件
 
@@ -228,7 +227,7 @@ HTTP(S) URL 或 base64 data URL:
 
 ```python
 resp = client.chat.completions.create(
-    model="gemini-3.6-flash",
+    model="gemini-3.8-flash",
     messages=[{
         "role": "user",
         "content": [
@@ -242,7 +241,7 @@ resp = client.chat.completions.create(
 ## 已知限制
 
 - **图片上传可能需要 Cookie**: 多模态输入使用 Gemini 网页端图片上传接口。匿名上传失败时, 请配置 Gemini cookie。
-- **Pro/Ultra 非真实路由**: 无付费订阅 cookie 时, `gemini-3.1-pro` 实际路由到 Flash 模型. "Pro" 只是 UI 偏好标签.
+- **档位受方案限制**: Pro 和 Argon 的路由取决于登录账号方案及模型可用性.
 - **单轮对话**: 每次请求是独立对话, 多轮上下文通过在 prompt 中包含历史消息模拟.
 - **频率限制**: Google 可能限制高频请求, server 会自动重试但持续高负载可能被封.
 
