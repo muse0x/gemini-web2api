@@ -1,65 +1,60 @@
-# Gemini Web2API - Cloudflare Workers 部署文档
+# Gemini Web2API — Hướng dẫn triển khai Cloudflare Workers
 
-## 📖 项目简介
+## Giới thiệu
 
-Gemini Web2API 是一个部署在 Cloudflare Workers 上的无服务器代理服务，将 Google Gemini 的 Web 界面转换为 OpenAI 兼容的 API 接口。无需服务器、无需 API Key（可选），开箱即用。
+Gemini Web2API là proxy chạy trên Cloudflare Workers, chuyển giao diện web Google Gemini thành API tương thích OpenAI. Không cần tự quản lý máy chủ; API key có thể bật hoặc tắt tùy cấu hình.
 
-### 核心特性
+### Tính năng chính
 
-- **零成本部署**：基于 Cloudflare Workers 免费计划（每日 10 万次请求）
-- **全球加速**：自动部署到 Cloudflare 全球 300+ 边缘节点
-- **OpenAI 兼容**：完全兼容 `/v1/chat/completions` 和 `/v1/models` 端点
-- **打字机流式输出**：真正的 SSE（Server-Sent Events）流式响应
-- **多指纹轮换**：8 种浏览器指纹 + 6 种语言偏好随机轮换，降低被识别概率
-- **多 Cookie 轮换**：支持配置多个 Google 账号 Cookie，随机选择使用
-- **并发安全**：请求级配置隔离，彻底消除高并发场景下的配置串扰
-- **工具调用支持**：兼容 OpenAI Function Calling 格式
+- Triển khai trên gói Cloudflare Workers miễn phí.
+- Phân phối qua mạng lưới edge toàn cầu của Cloudflare.
+- Tương thích với `/v1/chat/completions` và `/v1/models`.
+- Streaming SSE.
+- Luân phiên dấu vân tay trình duyệt, ngôn ngữ và nhiều cookie.
+- Tách cấu hình theo request để tránh các request đồng thời ghi đè cấu hình của nhau.
+- Hỗ trợ gọi công cụ theo định dạng OpenAI Function Calling.
 
-### 适用场景
+### Trường hợp sử dụng
 
-- 为 NextChat、Cherry Studio、ChatBox 等客户端提供免费的 Gemini API
-- 在 WorkBuddy 等工具中作为 Gemini 模型的后端
-- 个人学习、研究和小型项目的 AI 能力接入
+- Kết nối NextChat, Cherry Studio, ChatBox và các client tương thích OpenAI.
+- Dùng Gemini làm backend cho WorkBuddy hoặc công cụ tương tự.
+- Học tập, nghiên cứu và các dự án cá nhân quy mô nhỏ.
 
----
+## Triển khai nhanh
 
-## 🚀 快速部署
+### 1. Đăng nhập Cloudflare
 
-### 第一步：登录 Cloudflare
+1. Mở [Cloudflare Dashboard](https://dash.cloudflare.com).
+2. Đăng nhập hoặc tạo tài khoản miễn phí.
+3. Mở mục **Workers & Pages** ở thanh bên.
 
-1. 打开 [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. 登录你的 Cloudflare 账号（没有账号可以免费注册）
-3. 进入左侧菜单 **Workers & Pages**
+### 2. Tạo Worker
 
-### 第二步：创建 Worker
+1. Chọn **Create application** → **Create Worker**.
+2. Đặt tên cho Worker, ví dụ `api`.
+3. Chọn **Deploy**, sau đó **Edit code**.
+4. Xóa mã mặc định và dán toàn bộ mã nguồn của dự án vào trình soạn thảo.
+5. Chọn **Save and deploy**.
 
-1. 点击 **创建应用程序** → **创建 Worker**
-2. 给 Worker 起一个名字（例如 `api`）
-3. 点击 **部署** 按钮
-4. 点击 **编辑代码** 按钮
-5. 清空编辑器中的默认代码
-6. 将本项目完整代码粘贴到编辑器中
-7. 点击右上角 **保存并部署**
+### 3. Lấy địa chỉ API
 
-### 第三步：获取测试地址
-
-部署成功后，你的 API 地址为：
+Sau khi triển khai, địa chỉ thường có dạng:
 
 ```
-https://你的worker名称.你的账户名.workers.dev
+https://<ten-worker>.<ten-tai-khoan>.workers.dev
 ```
 
-例如：`https://api.geminai.workers.dev`
+Ví dụ: `https://api.geminai.workers.dev`.
 
-### 第四步：验证部署
+### 4. Kiểm tra
 
-在浏览器中访问以下地址：
+Mở endpoint sau trong trình duyệt:
 
 ```
-https://你的worker.workers.dev/health
+https://<ten-worker>.workers.dev/health
 ```
 
-如果看到类似以下 JSON 响应，说明部署成功：
+Nếu triển khai thành công, server trả về JSON tương tự:
 
 ```json
 {
@@ -72,227 +67,212 @@ https://你的worker.workers.dev/health
 }
 ```
 
----
+## Cấu hình client
 
-## 🔧 客户端配置
+### NextChat
 
-### NextChat (ChatGPT-Next-Web)
-
-| 配置项 | 值 |
-|--------|-----|
-| 接口类型 | OpenAI |
-| 接口地址 | `https://你的worker.workers.dev/v1` |
-| API Key | `sk-gemini`（默认密钥） |
-| 模型 | `gemini-3.8-flash` |
+| Thiết lập | Giá trị |
+|-----------|---------|
+| Loại API | OpenAI |
+| Base URL | `https://<ten-worker>.workers.dev/v1` |
+| API Key | `sk-gemini` (mặc định) |
+| Model | `gemini-3.8-flash` |
 
 ### Cherry Studio
 
-| 配置项 | 值 |
-|--------|-----|
-| API 地址 | `https://你的worker.workers.dev/v1` |
-| API 密钥 | `sk-gemini` |
-| 模型 | `gemini-3.8-flash` |
+| Thiết lập | Giá trị |
+|-----------|---------|
+| API URL | `https://<ten-worker>.workers.dev/v1` |
+| API Key | `sk-gemini` |
+| Model | `gemini-3.8-flash` |
 
 ### ChatBox
 
-| 配置项 | 值 |
-|--------|-----|
-| API 模式 | OpenAI API |
-| API 域名 | `https://你的worker.workers.dev` |
-| API 路径 | `/v1/chat/completions` |
+| Thiết lập | Giá trị |
+|-----------|---------|
+| Chế độ API | OpenAI API |
+| API domain | `https://<ten-worker>.workers.dev` |
+| API path | `/v1/chat/completions` |
 | API Key | `sk-gemini` |
 
-### 使用 curl 测试
+### Thử bằng curl
+
+Request không streaming:
 
 ```bash
-# 非流式请求
-curl https://你的worker.workers.dev/v1/chat/completions \
+curl https://<ten-worker>.workers.dev/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-gemini" \
   -d '{
     "model": "gemini-3.8-flash",
-    "messages": [{"role": "user", "content": "你好"}],
+    "messages": [{"role": "user", "content": "Xin chào"}],
     "stream": false
   }'
+```
 
-# 流式请求（打字机效果）
-curl -N https://你的worker.workers.dev/v1/chat/completions \
+Request streaming:
+
+```bash
+curl -N https://<ten-worker>.workers.dev/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-gemini" \
   -d '{
     "model": "gemini-3.8-flash",
-    "messages": [{"role": "user", "content": "讲个故事"}],
+    "messages": [{"role": "user", "content": "Kể một câu chuyện"}],
     "stream": true
   }'
 ```
 
----
+## Biến môi trường tùy chọn
 
-## ⚙️ 环境变量配置（可选）
+Cấu hình tại **Cloudflare Dashboard → Workers → Worker của bạn → Settings → Variables and Secrets**.
 
-在 Cloudflare Dashboard → Workers → 你的 Worker → 设置 → 变量 → 环境变量中配置：
+### Xác thực
 
-### 认证相关
+| Tên | Mô tả | Ví dụ |
+|-----|-------|-------|
+| `COOKIE_STRING` | Cookie Gemini; phân cách nhiều tài khoản bằng `\|` | `cookie1\|cookie2` |
+| `SAPISID` | Giá trị SAPISID; có thể phân cách nhiều tài khoản bằng `\|` | `sapisid1\|sapisid2` |
+| `API_KEYS` | Danh sách API key dạng JSON | `["sk-gemini", "my-key"]` |
 
-| 变量名 | 说明 | 示例值 |
-|--------|------|--------|
-| `COOKIE_STRING` | Gemini Cookie，多个用 `\|` 分隔 | `cookie1\| cookie2\| cookie3` |
-| `SAPISID` | SAPISID 值，多个用 `\|` 分隔 | `sapisid1\| sapisid2\| sapisid3` |
-| `API_KEYS` | API 密钥白名单（JSON 数组） | `["sk-gemini", "my-key"]` |
+### Gemini
 
-### Gemini 配置
+| Tên | Mô tả | Ví dụ |
+|-----|-------|-------|
+| `GEMINI_BL` | Nhãn build Gemini; cập nhật nếu gặp HTTP 405 | `boq_assistant-bard-web-server_20260716.08_p0` |
+| `DEFAULT_MODEL` | Model mặc định | `gemini-3.8-flash` |
+| `AUTH_USER` | Chỉ số tài khoản | `0` |
 
-| 变量名 | 说明 | 示例值 |
-|--------|------|--------|
-| `GEMINI_BL` | Gemini 构建标签（遇到 405 时更新） | `boq_assistant-bard-web-server_20260716.08_p0` |
-| `DEFAULT_MODEL` | 默认模型 | `gemini-3.8-flash` |
-| `AUTH_USER` | 多账户索引 | `0` |
+### Hiệu năng
 
-### 性能调优
+| Tên | Mô tả | Mặc định |
+|-----|-------|----------|
+| `RETRY_ATTEMPTS` | Số lần thử lại | `3` |
+| `RETRY_DELAY_SEC` | Thời gian chờ giữa các lần thử (giây) | `2` |
+| `REQUEST_TIMEOUT_SEC` | Thời gian chờ request (giây) | `28` |
+| `FINGERPRINT_JITTER_MS` | Độ trễ ngẫu nhiên tối đa (ms) | `1500` |
+| `RATE_LIMIT_MAX` | Số request tối đa trong cửa sổ giới hạn | `3000` |
+| `RATE_LIMIT_WINDOW` | Cửa sổ giới hạn (giây) | `60` |
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `RETRY_ATTEMPTS` | 重试次数 | `3` |
-| `RETRY_DELAY_SEC` | 重试间隔（秒） | `2` |
-| `REQUEST_TIMEOUT_SEC` | 请求超时（秒） | `28` |
-| `FINGERPRINT_JITTER_MS` | 随机延迟最大值（毫秒） | `1500` |
-| `RATE_LIMIT_MAX` | 速率限制最大请求数 | `3000` |
-| `RATE_LIMIT_WINDOW` | 速率限制时间窗口（秒） | `60` |
+## Lấy cookie Gemini
 
----
+### Vì sao cần cookie?
 
-## 🍪 获取 Gemini Cookie
+Request ẩn danh có thể dễ bị giới hạn tần suất (HTTP 429). Cookie hợp lệ có thể giúp request ổn định hơn và cho phép sử dụng các cấp model phụ thuộc tài khoản. Quyền dùng Pro hoặc Argon vẫn tùy theo gói Google AI của tài khoản.
 
-### 为什么需要 Cookie？
+### Các bước lấy cookie
 
-匿名请求容易被 Gemini 限流（返回 HTTP 429 错误）。配置有效的 Cookie 可以：
-- 大幅降低被限流的概率
-- 提升 Pro 模型的路由质量
-- 获得更稳定的服务体验
-
-### 获取步骤
-
-1. 打开 Chrome/Edge 浏览器
-2. 访问 https://gemini.google.com/app 并登录 Google 账号
-3. 按 **F12** 打开开发者工具
-4. 进入 **Application**（应用程序）标签
-5. 左侧选择 **Cookies** → `https://gemini.google.com`
-6. 找到以下 Cookie 并复制其值：
-   - `__Secure-1PSID`
-   - `__Secure-3PSID`
-   - `SAPISID`
-7. 组合为完整 Cookie 字符串：
-   ```
-   __Secure-1PSID=你的值; __Secure-3PSID=你的值; SAPISID=你的值
-   ```
-
-### 多账号配置
-
-如果你有多个 Google 账号，可以用 `|` 分隔多个 Cookie：
+1. Mở Chrome hoặc Edge.
+2. Truy cập [gemini.google.com/app](https://gemini.google.com/app) và đăng nhập.
+3. Nhấn **F12** để mở DevTools.
+4. Chọn thẻ **Application**.
+5. Trong phần **Cookies**, mở `https://gemini.google.com`.
+6. Sao chép các giá trị `__Secure-1PSID`, `__Secure-3PSID` và `SAPISID`.
+7. Ghép thành một chuỗi cookie:
 
 ```
-COOKIE_STRING = "cookie_账号1| cookie_账号2| cookie_账号3"
-SAPISID = "sapisid_1| sapisid_2| sapisid_3"
+__Secure-1PSID=your_value; __Secure-3PSID=your_value; SAPISID=your_value
 ```
 
-每次请求会随机选择一个 Cookie 使用，大幅降低单个账号被限流的概率。
+### Cấu hình nhiều tài khoản
 
----
+Dùng dấu `|` để phân cách cookie của nhiều tài khoản:
 
-## 🔄 更新 BL 版本
+```
+COOKIE_STRING="cookie_account_1|cookie_account_2|cookie_account_3"
+SAPISID="sapisid_1|sapisid_2|sapisid_3"
+```
 
-如果遇到 `HTTP 405: Method Not Allowed` 错误，说明 Gemini 前端已更新，需要同步更新构建标签：
+Mỗi request sẽ chọn một bộ thông tin xác thực để gửi.
 
-1. 浏览器打开 https://gemini.google.com/app
-2. 按 **F12** → **Network**（网络）标签
-3. 在任意请求的 URL 中搜索 `boq_assistant`
-4. 复制最新的版本号，例如：
-   ```
-   boq_assistant-bard-web-server_20260730.02_p0
-   ```
-5. 更新环境变量 `GEMINI_BL` 或代码中的 `geminiBl` 配置项
+## Cập nhật phiên bản BL
 
----
+Lỗi `HTTP 405: Method Not Allowed` có thể cho biết build Gemini Web đã thay đổi. Để cập nhật:
 
-## 🎭 多指纹轮换机制
+1. Mở [gemini.google.com/app](https://gemini.google.com/app).
+2. Nhấn **F12** → **Network**.
+3. Tìm `boq_assistant` trong URL của request.
+4. Sao chép nhãn build mới, ví dụ:
 
-本程序内置了浏览器指纹轮换系统，每次请求会随机选择不同的浏览器标识：
+```
+boq_assistant-bard-web-server_20260730.02_p0
+```
 
-| 指纹类型 | 池大小 | 说明 |
-|---------|--------|------|
-| User-Agent | 8 种 | 加权随机，模拟真实浏览器市场份额 |
-| Accept-Language | 6 种 | 均匀随机，模拟不同地区用户 |
-| Sec-Ch-Ua | 3 种 | Chrome 版本标识（仅 Chrome UA 时添加） |
-| 随机延迟 | 0-1500ms | 请求前添加随机延迟，模拟人类操作 |
+5. Cập nhật biến `GEMINI_BL` hoặc cấu hình `geminiBl` trong mã Worker.
 
----
+## Luân phiên dấu vân tay
 
-## 🛡️ 安全建议
+Worker có thể luân phiên một số header và thêm độ trễ ngẫu nhiên trước khi gửi request:
 
-1. **修改默认 API Key**：将 `apiKeys` 中的 `sk-gemini` 改为你自己的密钥
-2. **设置速率限制**：根据实际使用量调整 `RATE_LIMIT_MAX`
-3. **定期更新 Cookie**：Google Cookie 会过期，需要定期更换
-4. **不要分享 Cookie**：Cookie 等同于你的 Google 账号凭证
+| Loại | Số lượng/phạm vi | Mô tả |
+|------|------------------|-------|
+| User-Agent | 8 mẫu | Chọn ngẫu nhiên có trọng số |
+| Accept-Language | 6 mẫu | Luân phiên ngôn ngữ |
+| Sec-Ch-Ua | 3 mẫu | Header phiên bản Chrome, chỉ dùng với Chrome User-Agent |
+| Độ trễ ngẫu nhiên | 0–1500 ms | Có thể điều chỉnh bằng `FINGERPRINT_JITTER_MS` |
 
----
+## Khuyến nghị bảo mật
 
-## ❓ 常见问题
+1. Thay API key mặc định `sk-gemini` bằng key riêng.
+2. Điều chỉnh giới hạn request `RATE_LIMIT_MAX` theo nhu cầu.
+3. Cookie Google có thời hạn; cập nhật khi hết hạn.
+4. Không chia sẻ cookie vì cookie có thể cấp quyền truy cập tài khoản Google.
 
-### Q: 返回 `empty response from server`
+## Câu hỏi thường gặp
 
-**原因**：NextChat 流式解析问题。  
-**解决**：确认使用的是最新版代码（已修复 SSE 格式）。
+### `empty response from server`
 
-### Q: 返回 `HTTP 429: Too Many Requests`
+**Nguyên nhân:** client có thể xử lý streaming SSE không đúng.
 
-**原因**：Gemini 限流，匿名请求频率限制更严格。  
-**解决**：配置有效的 `COOKIE_STRING` 和 `SAPISID`。
+**Cách xử lý:** cập nhật Worker lên phiên bản mới nhất và kiểm tra lại cấu hình streaming.
 
-### Q: 返回 `HTTP 405: Method Not Allowed`
+### `HTTP 429: Too Many Requests`
 
-**原因**：BL 版本过期。  
-**解决**：更新 `geminiBl` 配置（参见上文「更新 BL 版本」章节）。
+**Nguyên nhân:** Gemini giới hạn request; request ẩn danh thường bị giới hạn chặt hơn.
 
-### Q: 返回 `invalid api key`
+**Cách xử lý:** cấu hình cookie hợp lệ trong `COOKIE_STRING` và `SAPISID`.
 
-**原因**：客户端密钥配置错误。  
-**解决**：检查客户端是否配置了正确的 API Key（默认 `sk-gemini`）。
+### `HTTP 405: Method Not Allowed`
 
-### Q: WorkBuddy 中使用出现串扰
+**Nguyên nhân:** nhãn build `GEMINI_BL` đã cũ.
 
-**原因**：多模型并发请求共享全局配置。  
-**解决**：当前版本已通过请求级配置隔离解决此问题。
+**Cách xử lý:** cập nhật theo mục “Cập nhật phiên bản BL”.
 
----
+### `invalid api key`
 
-## 📊 支持模型列表
+**Nguyên nhân:** API key của client không khớp.
 
-| 模型 ID | 类型 | 说明 |
-|---------|------|------|
-| `gemini-4-argon` | ARGON | 需要有权限的 Google AI 方案及 Cookie；category 7 为推断值 |
-| `gemini-3.8-flash` | FAST | 当前 Gemini Flash 模型 |
-| `gemini-3.6-flash` | FAST | 上一代 Flash 模型 |
-| `gemini-3.5-flash-lite` | FLASH_LITE | 快速且高效的模型 |
-| `gemini-3.1-pro-preview` | PRO | 预览模型；需要有权限的账号 Cookie |
-| `gemini-auto` | AUTO | 自动选择模型 |
+**Cách xử lý:** kiểm tra client dùng key đã cấu hình; mặc định là `sk-gemini`.
 
-支持通过 `@think=` 参数覆盖思考模式：
-- `gemini-3.8-flash@think=0` — Flash 模型 + 深度思考
-- `gemini-3.1-pro-preview@think=4` — Pro 模型 + 自动思考
+### Request đồng thời trong WorkBuddy bị lẫn cấu hình
 
----
+Phiên bản hiện tại tạo cấu hình riêng theo từng request để tránh chia sẻ trạng thái cấu hình giữa các request đồng thời.
 
-## 📝 更新日志
+## Danh sách model
 
-| 版本 | 日期 | 更新内容 |
-|------|------|---------|
-| 1.5.0 | 2026-07-31 | 新增多指纹轮换、多Cookie轮换、随机延迟机制 |
-| 1.4.0 | 2026-07-30 | 修复并发串扰、速率限制内存安全 |
-| 1.3.0 | 2026-07-29 | 修复 SSE 流式格式、NextChat 兼容性 |
-| 1.0.0 | 2026-07-16 | 初始版本，基于 gemini-web2api v1.1.0 移植 |
+| Model ID | Loại | Ghi chú |
+|----------|------|---------|
+| `gemini-4-argon` | ARGON | Cần tài khoản Google AI phù hợp; category 7 là giá trị suy luận |
+| `gemini-3.8-flash` | FAST | Gemini Flash hiện tại |
+| `gemini-3.6-flash` | FAST | Thế hệ Flash trước |
+| `gemini-3.5-flash-lite` | FLASH_LITE | Nhanh, tiết kiệm tài nguyên |
+| `gemini-3.1-pro-preview` | PRO | Bản preview; cần tài khoản phù hợp |
+| `gemini-auto` | AUTO | Tự động chọn model |
 
----
+Có thể thêm `@think=` để ghi đè mức suy luận:
 
-## 📄 许可证
+- `gemini-3.8-flash@think=0` — Flash với mức suy luận sâu.
+- `gemini-3.1-pro-preview@think=4` — Pro với mức suy luận tự động.
 
-本项目基于原项目 [gemini-web2api](https://github.com/your-repo/gemini-web2api) 移植，遵循原项目的开源协议。
+## Nhật ký thay đổi
+
+| Phiên bản | Ngày | Nội dung |
+|-----------|------|----------|
+| 1.5.0 | 2026-07-31 | Thêm luân phiên dấu vân tay, nhiều cookie và độ trễ ngẫu nhiên |
+| 1.4.0 | 2026-07-30 | Sửa lỗi lẫn cấu hình khi chạy đồng thời và an toàn bộ nhớ cho giới hạn tần suất |
+| 1.3.0 | 2026-07-29 | Sửa định dạng SSE và khả năng tương thích NextChat |
+| 1.0.0 | 2026-07-16 | Bản đầu tiên, chuyển thể từ gemini-web2api v1.1.0 |
+
+## Giấy phép
+
+Worker này được chuyển thể từ dự án [gemini-web2api](https://github.com/Sophomoresty/gemini-web2api) và tuân theo giấy phép mã nguồn mở của dự án gốc.

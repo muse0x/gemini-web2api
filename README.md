@@ -4,7 +4,7 @@
   <img src="logo.png" width="200" alt="gemini-web2api logo">
 </p>
 
-[中文文档](README_CN.md)
+[Tiếng Việt](README_VI.md)
 
 Convert Google Gemini's web interface into an OpenAI-compatible API. Zero cost, cross-platform, single file.
 
@@ -287,18 +287,9 @@ The model selection is controlled by field `[79]` in the request payload, mapped
 ## Acknowledgments
 
 - Inspired by the open-source API proxy ecosystem
+- Agent capabilities during development are provided by [GenericAgent](https://github.com/lsdefine/GenericAgent).
+- Thanks to the [LinuxDo community](https://linux.do/).
 
 ## License
 
 MIT
-
----
-
-## 致谢
-
-本项目的开发 agent 能力由 [GenericAgent](https://github.com/lsdefine/GenericAgent) 提供。
-
-### 🚩 友情链接
-
-[![GenericAgent](https://img.shields.io/badge/Agent_Framework-GenericAgent-orange?style=for-the-badge&logo=github)](https://github.com/lsdefine/GenericAgent)
-[![LinuxDo](https://img.shields.io/badge/社区-LinuxDo-blue?style=for-the-badge)](https://linux.do/)
