@@ -107,6 +107,12 @@ LEGACY_MODEL_ALIASES = {
     "gemini-flash-lite": ("gemini-3.5-flash-lite", None),
 }
 
+EFFORT_TO_THINK_MODE = {
+    "none": 4, "minimal": 4, "low": 4,
+    "medium": 2,
+    "high": 0, "xhigh": 0, "max": 0,
+}
+
 # ─── Utilities ───────────────────────────────────────────────────────────────
 
 def log(msg: str):
@@ -881,7 +887,7 @@ class GeminiHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         return self.rfile.read(length) if length else b""
 
-    def _resolve_model(self, model_name):
+    def _resolve_model(self, model_name, effort=None):
         think_override = None
         if "@think=" in model_name:
             model_name, think_str = model_name.rsplit("@think=", 1)
@@ -894,6 +900,8 @@ class GeminiHandler(BaseHTTPRequestHandler):
         cfg = MODELS.get(model_name)
         if not cfg:
             return None, None, None, f"Unknown model: {model_name}"
+        if think_override is None and isinstance(effort, str):
+            think_override = EFFORT_TO_THINK_MODE.get(effort.lower())
         return model_name, cfg["mode"], (think_override if think_override is not None else cfg["think"]), None
 
     def _call_gemini(self, prompt, model_id, think_mode, tools, file_refs=None):
@@ -938,8 +946,10 @@ class GeminiHandler(BaseHTTPRequestHandler):
             self.send_anthropic_error("system must be a string or an array")
             return
 
+        output_config = req.get("output_config")
         model_name, model_id, think_mode, err = self._resolve_model(
-            req.get("model", CONFIG["default_model"]))
+            req.get("model", CONFIG["default_model"]),
+            output_config.get("effort") if isinstance(output_config, dict) else None)
         if err:
             self.send_anthropic_error(err)
             return
@@ -1066,8 +1076,10 @@ class GeminiHandler(BaseHTTPRequestHandler):
 
     def handle_chat(self, body: bytes):
         req = json.loads(body)
+        reasoning = req.get("reasoning")
+        effort = req.get("reasoning_effort") or req.get("reasoningEffort") or (reasoning.get("effort") if isinstance(reasoning, dict) else None)
         model_name, model_id, think_mode, err = self._resolve_model(
-            req.get("model", CONFIG["default_model"]))
+            req.get("model", CONFIG["default_model"]), effort)
         if err:
             self.send_json({"error": {"message": err}}, 400)
             return
@@ -1150,8 +1162,10 @@ class GeminiHandler(BaseHTTPRequestHandler):
     def handle_responses(self, body: bytes):
         """OpenAI Responses API for Codex CLI compatibility."""
         req = json.loads(body)
+        reasoning = req.get("reasoning")
+        effort = req.get("reasoning_effort") or req.get("reasoningEffort") or (reasoning.get("effort") if isinstance(reasoning, dict) else None)
         model_name, model_id, think_mode, err = self._resolve_model(
-            req.get("model", CONFIG["default_model"]))
+            req.get("model", CONFIG["default_model"]), effort)
         if err:
             self.send_json({"error": {"message": err}}, 400)
             return

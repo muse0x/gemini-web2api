@@ -229,8 +229,10 @@ class GeminiHandler(BaseHTTPRequestHandler):
             self.send_anthropic_error("system must be a string or an array")
             return
 
+        output_config = req.get("output_config")
         model_name, model_id, think_mode, err, extra_fields = resolve_model(
-            req.get("model", CONFIG["default_model"]))
+            req.get("model", CONFIG["default_model"]),
+            effort=output_config.get("effort") if isinstance(output_config, dict) else None)
         if err:
             self.send_anthropic_error(err)
             return
@@ -387,8 +389,10 @@ class GeminiHandler(BaseHTTPRequestHandler):
         if req is None:
             self.send_json({"error": {"message": "invalid JSON"}}, 400)
             return
+        reasoning = req.get("reasoning")
+        effort = req.get("reasoning_effort") or req.get("reasoningEffort") or (reasoning.get("effort") if isinstance(reasoning, dict) else None)
         model_name, model_id, think_mode, err, extra_fields = resolve_model(
-            req.get("model", CONFIG["default_model"]))
+            req.get("model", CONFIG["default_model"]), effort=effort)
         if err:
             self.send_json({"error": {"message": err}}, 400)
             return
@@ -477,8 +481,10 @@ class GeminiHandler(BaseHTTPRequestHandler):
         if req is None:
             self.send_json({"error": {"message": "invalid JSON"}}, 400)
             return
+        reasoning = req.get("reasoning")
+        effort = req.get("reasoning_effort") or req.get("reasoningEffort") or (reasoning.get("effort") if isinstance(reasoning, dict) else None)
         model_name, model_id, think_mode, err, extra_fields = resolve_model(
-            req.get("model", CONFIG["default_model"]))
+            req.get("model", CONFIG["default_model"]), effort=effort)
         if err:
             self.send_json({"error": {"message": err}}, 400)
             return

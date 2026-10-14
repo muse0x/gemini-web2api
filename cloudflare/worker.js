@@ -436,9 +436,8 @@ function getRandomSecChUaPlatform() {
 //   6 = FLASH_LITE（轻量快速）- 最轻量模型，速度最快但质量较低
 //   7 = ULTRA（顶级推理）- 根据 Gemini Web 当前档位推断，尚未从前端源码确认
 // 
-// think 字段含义（思考模式）：
-//   0 = 启用深度思考（模型会花更多时间推理）
-//   4 = AUTO（自动选择思考深度，由 Gemini 决定）
+// think 字段含义（Gemini Web 思考等级）：
+//   0 = 高, 2 = 中, 4 = 低
 
 var MODELS = {
   'gemini-4-argon': {
@@ -482,6 +481,17 @@ var LEGACY_MODEL_ALIASES = {
   'gemini-3.1-pro-enhanced': ['gemini-3.1-pro-preview', null],
   'gemini-flash-lite': ['gemini-3.5-flash-lite', null],
 };
+
+var EFFORT_TO_THINK_MODE = {
+  none: 4, minimal: 4, low: 4,
+  medium: 2,
+  high: 0, xhigh: 0, max: 0,
+};
+
+function requestEffort(body) {
+  var reasoning = body.reasoning;
+  return body.reasoning_effort || body.reasoningEffort || (reasoning && typeof reasoning === 'object' ? reasoning.effort : null);
+}
 
 // ============================================================================
 // 🔑 核心：请求级配置生成器（解决并发串扰 + 多Cookie轮换 + 指纹轮换）
@@ -882,8 +892,9 @@ function getAccountPrefix(config) {
  *   inner[10]: 流式输出标志 1
  *   inner[11]: 安全过滤级别（0=基础, 1=严格, 2=最严格）
  *   inner[17]: 思考模式 [[thinkMode]]
- *     thinkMode=0: 启用深度思考
- *     thinkMode=4: 自动选择
+ *     thinkMode=0: 高
+ *     thinkMode=2: 中
+ *     thinkMode=4: 低
  *   inner[18]: 扩展思考标志 0
  *   inner[30]: 输出格式 [4]
  *   inner[41]: 响应类型 [2]
@@ -900,7 +911,7 @@ function getAccountPrefix(config) {
  * 
  * @param {string} prompt - 用户输入的提示文本
  * @param {number} modelId - 模型类别 ID（MODE_CATEGORY 枚举值，ULTRA=7 为推断值）
- * @param {number} thinkMode - 思考模式设置（0=深度思考, 4=自动）
+ * @param {number} thinkMode - Gemini Web 思考等级（0=高, 2=中, 4=低）
  * @param {Object} config - 请求级配置对象
  * @returns {string} URL 编码的请求体字符串，格式为 "f.req=..."
  */
@@ -1132,7 +1143,7 @@ async function buildHeaders(config) {
  * 
  * @param {string} prompt - 用户输入的提示文本
  * @param {number} modelId - 模型类别 ID（MODE_CATEGORY 枚举值，ULTRA=7 为推断值）
- * @param {number} thinkMode - 思考模式设置（0=深度思考, 4=自动）
+ * @param {number} thinkMode - Gemini Web 思考等级（0=高, 2=中, 4=低）
  * @param {Object} config - 请求级配置对象
  * @returns {Promise<string>} API 原始响应文本（包含嵌套 JSON）
  * @throws {Error} 所有重试失败后抛出最后的错误
@@ -1850,17 +1861,17 @@ function sendSSE(stream) {
  * 
  * 支持 @think= 参数来覆盖默认的思考模式。
  * 例如: "gemini-3.8-flash@think=0"
- * 表示使用 Flash 模型但启用深度思考（think=0）。
+ * 表示使用 Flash 模型并选择 Gemini Web 的高思考等级（think=0）。
  * 
  * @param {string} modelName - 模型名称
  *   格式: "模型名" 或 "模型名@think=数字"
  * @returns {Object} 
  *   - modelName: 去掉 @think= 参数后的实际模型名称
  *   - modelId: MODE_CATEGORY 枚举值（1-7，ULTRA=7 为推断值）
- *   - thinkMode: 思考模式（0=深度思考, 4=自动）
+ *   - thinkMode: 思考等级（0=高, 2=中, 4=低）
  *   - error: 错误信息，null 表示正常
  */
-function resolveModel(modelName) {
+function resolveModel(modelName, effort) {
   var thinkOverride = null;
   var actualModelName = modelName;
 
@@ -1884,6 +1895,10 @@ function resolveModel(modelName) {
   var cfg = MODELS[actualModelName];
   if (!cfg) {
     return { error: '未知模型: ' + actualModelName };
+  }
+  if (thinkOverride === null && typeof effort === 'string') {
+    var mappedThinkMode = EFFORT_TO_THINK_MODE[effort.toLowerCase()];
+    if (Number.isInteger(mappedThinkMode)) thinkOverride = mappedThinkMode;
   }
 
   // 返回解析结果
@@ -1929,7 +1944,7 @@ function resolveModel(modelName) {
  */
 async function handleChatCompletions(request, body, config) {
   // ---- 第一步：解析模型 ----
-  var resolved = resolveModel(body.model || config.defaultModel);
+  var resolved = resolveModel(body.model || config.defaultModel, requestEffort(body));
   if (resolved.error) {
     return sendJSON({ error: { message: resolved.error } }, 400);
   }
@@ -2518,7 +2533,8 @@ async function handleAnthropicMessages(request, body, config) {
     return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens must be a positive integer' } }, 400);
   }
 
-  var resolved = resolveModel(body.model || config.defaultModel);
+  var effort = body.output_config && body.output_config.effort;
+  var resolved = resolveModel(body.model || config.defaultModel, effort);
   if (resolved.error) {
     return sendJSON({ type: 'error', error: { type: 'invalid_request_error', message: resolved.error } }, 400);
   }
@@ -2527,6 +2543,7 @@ async function handleAnthropicMessages(request, body, config) {
   var messages = anthropicMessagesToOpenAI(body, toolChoice);
   var chatBody = {
     model: resolved.modelName,
+    reasoning_effort: effort,
     messages: messages,
     tools: toolChoice === 'none' || !tools.length ? null : tools,
     stream: body.stream === true,
@@ -2591,7 +2608,7 @@ async function handleAnthropicMessages(request, body, config) {
  */
 async function handleResponses(request, body, config) {
   // 解析模型
-  var resolved = resolveModel(body.model || config.defaultModel);
+  var resolved = resolveModel(body.model || config.defaultModel, requestEffort(body));
   if (resolved.error) {
     return sendJSON({ error: { message: resolved.error } }, 400);
   }

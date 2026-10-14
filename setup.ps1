@@ -96,13 +96,18 @@ Write-JsoncFile $serverConfigPath $serverConfig "server-config.json"
 $openCodePath = Join-Path $env:USERPROFILE ".config\opencode\opencode.json"
 $openCode = Read-JsoncFile $openCodePath
 if (-not $openCode.provider) { Set-JsonProperty $openCode "provider" ([pscustomobject]@{}) }
+$geminiThinkVariants = [pscustomobject]@{
+    low = [pscustomobject]@{ reasoningEffort = "low" }
+    medium = [pscustomobject]@{ reasoningEffort = "medium" }
+    high = [pscustomobject]@{ reasoningEffort = "high" }
+}
 Set-JsonProperty $openCode.provider "gemini-web2api" ([pscustomobject]@{
     npm = "@ai-sdk/openai-compatible"
     name = "Gemini Web2API"
     options = [pscustomobject]@{ baseURL = "$baseUrl/v1"; apiKey = $apiKey }
     models = [pscustomobject]@{
-        "gemini-4-argon" = [pscustomobject]@{ name = "GW - Gemini 4 Argon" }
-        "gemini-3.8-flash" = [pscustomobject]@{ name = "GW - Gemini 3.8 Flash" }
+        "gemini-4-argon" = [pscustomobject]@{ name = "GW - Gemini 4 Argon"; variants = $geminiThinkVariants }
+        "gemini-3.8-flash" = [pscustomobject]@{ name = "GW - Gemini 3.8 Flash"; variants = $geminiThinkVariants }
     }
 })
 Set-JsonProperty $openCode "model" "gemini-web2api/gemini-4-argon"
@@ -124,6 +129,7 @@ $codexConfigPath = Join-Path $codexDirectory "config.toml"
 $codexConfig = if (Test-Path $codexConfigPath) { [System.IO.File]::ReadAllText($codexConfigPath) } else { "" }
 $codexConfig = Set-TomlRootValue $codexConfig "model" "gemini-3.8-flash"
 $codexConfig = Set-TomlRootValue $codexConfig "model_provider" "gemini-web2api"
+$codexConfig = Set-TomlRootValue $codexConfig "model_reasoning_effort" "medium"
 $providerBlock = @"
 [model_providers.gemini-web2api]
 name = "Gemini Web2API"
@@ -163,5 +169,6 @@ if (-not $serverRunning) {
 
 Write-Host "Gemini Web2API is configured for OpenCode, Codex, and the Claude Code VS Code extension."
 Write-Host "Local API: $baseUrl/v1 | Model: gemini-3.8-flash"
+Write-Host "OpenCode Gemini thinking levels: low, medium, high."
 Write-Host "The server runs hidden; restart the three apps to load the new settings."
 Write-Host "Backups of existing settings are in: $backupDirectory"

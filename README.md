@@ -14,7 +14,7 @@ Convert Google Gemini's web interface into an OpenAI-compatible API. Zero cost, 
 - **OpenAI Compatible**: Drop-in replacement for `/v1/chat/completions` and `/v1/models`
 - **Tool Calling**: Full function calling support (OpenAI format)
 - **Multiple Models**: Gemini 4 Argon, 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Pro Preview, Auto
-- **Thinking Depth**: Adjustable via `@think=N` suffix (0=deepest, 4=shallowest)
+- **Gemini Thinking Levels**: `low`, `medium`, and `high`; selectable as OpenCode variants or via `@think=N`
 - **Web Search**: Built-in internet access (Gemini's native search)
 - **Cross-Platform**: Pure Python, single optional dependency (`httpx` for streaming)
 - **Streaming**: SSE streaming support via `httpx`
@@ -44,7 +44,8 @@ The script installs the optional `httpx` dependency if needed and creates or
 updates the local server and client configs. OpenCode defaults to **GW - Gemini
 4 Argon**; the Codex desktop app and Claude Code VS Code extension use
 `gemini-3.8-flash`. Argon requires an eligible Gemini account and cookie. The
-server runs in the background on `127.0.0.1`. Restart OpenCode, the ChatGPT/Codex
+server runs in the background on `127.0.0.1`. OpenCode gets Gemini Web's three
+thinking levels automatically. Restart OpenCode, the ChatGPT/Codex
 app, and VS Code after the command completes. The Claude Code extension must
 already be installed in VS Code; this configures the VS Code extension, not
 Claude Desktop.
@@ -122,8 +123,22 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
         "apiKey": "{env:GEMINI_WEB2API_API_KEY}"
       },
       "models": {
-        "gemini-4-argon": { "name": "GW - Gemini 4 Argon" },
-        "gemini-3.8-flash": { "name": "GW - Gemini 3.8 Flash" }
+        "gemini-4-argon": {
+          "name": "GW - Gemini 4 Argon",
+          "variants": {
+            "low": { "reasoningEffort": "low" },
+            "medium": { "reasoningEffort": "medium" },
+            "high": { "reasoningEffort": "high" }
+          }
+        },
+        "gemini-3.8-flash": {
+          "name": "GW - Gemini 3.8 Flash",
+          "variants": {
+            "low": { "reasoningEffort": "low" },
+            "medium": { "reasoningEffort": "medium" },
+            "high": { "reasoningEffort": "high" }
+          }
+        }
       }
     }
   }
@@ -131,6 +146,13 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
 ```
 
 If API-key authentication is disabled, remove the `apiKey` field.
+
+The one-command setup adds Gemini Web's three thinking levels to both OpenCode
+models: `low` (`think=4`), `medium` (`think=2`), and `high` (`think=0`). Select a
+level in OpenCode's model picker. Claude Code and Codex send their own effort
+fields; the server maps `none`/`minimal`/`low` to Gemini `low`, `medium` to
+Gemini `medium`, and `high`/`xhigh`/`max` to Gemini `high`. Their extra effort
+values do not create additional Gemini levels.
 
 ### Claude Code
 
@@ -171,15 +193,20 @@ Supports Google native API endpoints:
 | `gemini-3.1-pro-preview` | Pro | Preview model; requires an eligible account cookie |
 | `gemini-auto` | Auto | Gemini selects a model |
 
-### Thinking Depth
+### Thinking Levels
 
 Append `@think=N` to any model name:
 
 ```
-gemini-3.8-flash@think=0   # deepest
+gemini-3.8-flash@think=0   # high
 gemini-3.8-flash@think=2   # medium
-gemini-3.8-flash@think=4   # automatic/shallowest
+gemini-3.8-flash@think=4   # low
 ```
+
+The API reads OpenAI Chat Completions effort (`reasoning_effort` or OpenCode's
+`reasoningEffort`), OpenAI Responses effort (`reasoning.effort`), and Anthropic
+Messages effort (`output_config.effort`). An explicit `@think=N` suffix takes
+precedence over the request effort field.
 
 ## Optional: Cookie for Pro and Argon
 

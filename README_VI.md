@@ -14,7 +14,7 @@ Chuyển giao diện web Google Gemini thành API tương thích OpenAI. Miễn 
 - **Tương thích OpenAI**: thay thế trực tiếp các endpoint `/v1/chat/completions` và `/v1/models`.
 - **Gọi công cụ**: hỗ trợ function calling theo định dạng OpenAI.
 - **Nhiều model**: Gemini 4 Argon, 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite, 3.1 Pro Preview và Auto.
-- **Mức độ suy luận**: điều chỉnh bằng hậu tố `@think=N` (0 sâu nhất, 4 nông nhất).
+- **Mức suy luận Gemini**: `low`, `medium`, `high`; chọn bằng variant OpenCode hoặc hậu tố `@think=N`.
 - **Tìm kiếm web**: dùng khả năng tìm kiếm tích hợp của Gemini.
 - **Đa nền tảng**: Python thuần; `httpx` là thư viện tùy chọn để dùng streaming.
 - **Streaming**: hỗ trợ SSE qua `httpx`.
@@ -43,7 +43,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 Script tự cài `httpx` nếu máy chưa có và tạo/cập nhật cấu hình server cùng các
 client. OpenCode mặc định chọn **GW - Gemini 4 Argon**; ứng dụng ChatGPT/Codex
 và extension Claude Code trong VS Code dùng `gemini-3.8-flash`. Argon cần tài
-khoản Gemini đủ điều kiện và cookie. Server chạy ẩn trên `127.0.0.1`. Chạy xong,
+khoản Gemini đủ điều kiện và cookie. Server chạy ẩn trên `127.0.0.1`. OpenCode
+được thêm tự động ba variant suy luận Gemini. Chạy xong,
 đóng rồi mở lại OpenCode, ứng dụng ChatGPT/Codex và VS Code. Cần cài sẵn
 extension Claude Code trong VS Code. Phần Claude cấu hình extension VS Code,
 không cấu hình ứng dụng Claude Desktop.
@@ -116,8 +117,22 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
         "apiKey": "{env:GEMINI_WEB2API_API_KEY}"
       },
       "models": {
-        "gemini-4-argon": { "name": "GW - Gemini 4 Argon" },
-        "gemini-3.8-flash": { "name": "GW - Gemini 3.8 Flash" }
+        "gemini-4-argon": {
+          "name": "GW - Gemini 4 Argon",
+          "variants": {
+            "low": { "reasoningEffort": "low" },
+            "medium": { "reasoningEffort": "medium" },
+            "high": { "reasoningEffort": "high" }
+          }
+        },
+        "gemini-3.8-flash": {
+          "name": "GW - Gemini 3.8 Flash",
+          "variants": {
+            "low": { "reasoningEffort": "low" },
+            "medium": { "reasoningEffort": "medium" },
+            "high": { "reasoningEffort": "high" }
+          }
+        }
       }
     }
   }
@@ -125,6 +140,13 @@ $env:GEMINI_WEB2API_API_KEY = "your-key"
 ```
 
 Nếu server không bật xác thực API key, xóa trường `apiKey`.
+
+Lệnh setup một bước thêm đúng ba mức suy luận Gemini Web cho cả hai model
+OpenCode: `low` (`think=4`), `medium` (`think=2`) và `high` (`think=0`). Chọn
+mức trong model picker. Claude Code và Codex gửi effort theo định dạng riêng;
+server ánh xạ `none`/`minimal`/`low` thành Gemini `low`, `medium` thành Gemini
+`medium`, và `high`/`xhigh`/`max` thành Gemini `high`. Các giá trị effort dư của
+ứng dụng không tạo thêm mức Gemini.
 
 ### Claude Code
 
@@ -167,10 +189,15 @@ Các endpoint API Google được hỗ trợ:
 Thêm `@think=N` vào cuối tên model để điều chỉnh mức suy luận:
 
 ```
-gemini-3.8-flash@think=0   # sâu nhất
+gemini-3.8-flash@think=0   # cao
 gemini-3.8-flash@think=2   # trung bình
-gemini-3.8-flash@think=4   # tự động/nông nhất
+gemini-3.8-flash@think=4   # thấp
 ```
+
+API đọc effort từ OpenAI Chat Completions (`reasoning_effort` hoặc
+`reasoningEffort` của OpenCode), OpenAI Responses (`reasoning.effort`) và
+Anthropic Messages (`output_config.effort`). Hậu tố `@think=N` tường minh được
+ưu tiên hơn effort trong request.
 
 ## Cookie cho Pro và Argon
 

@@ -298,10 +298,11 @@ Phiên bản hiện tại tạo cấu hình riêng theo từng request để tr�
 | `gemini-3.1-pro-preview` | PRO | Bản preview; cần tài khoản phù hợp |
 | `gemini-auto` | AUTO | Tự động chọn model |
 
-Có thể thêm `@think=` để ghi đè mức suy luận:
+Có thể thêm `@think=` để chọn mức suy luận của Gemini Web:
 
-- `gemini-3.8-flash@think=0` — Flash với mức suy luận sâu.
-- `gemini-3.1-pro-preview@think=4` — Pro với mức suy luận tự động.
+- `gemini-3.8-flash@think=4` — Flash, mức thấp.
+- `gemini-3.8-flash@think=2` — Flash, mức trung bình.
+- `gemini-3.8-flash@think=0` — Flash, mức cao.
 
 ## Nhật ký thay đổi
 

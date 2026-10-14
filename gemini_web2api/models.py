@@ -40,8 +40,14 @@ LEGACY_MODEL_ALIASES = {
     "gemini-flash-lite": ("gemini-3.5-flash-lite", None),
 }
 
+EFFORT_TO_THINK_MODE = {
+    "none": 4, "minimal": 4, "low": 4,
+    "medium": 2,
+    "high": 0, "xhigh": 0, "max": 0,
+}
 
-def resolve_model(model_name: str, default: str = "gemini-3.8-flash"):
+
+def resolve_model(model_name: str, default: str = "gemini-3.8-flash", effort: str = None):
     """Resolve model name to (name, mode_id, think_mode, error, extra_fields).
 
     Unknown model names fall back to default rather than erroring,
@@ -66,6 +72,8 @@ def resolve_model(model_name: str, default: str = "gemini-3.8-flash"):
         model_name = default
         cfg = MODELS[default]
     mode_id = cfg["mode"]
+    if think_override is None and isinstance(effort, str):
+        think_override = EFFORT_TO_THINK_MODE.get(effort.lower())
     think_mode = think_override if think_override is not None else cfg["think"]
     extra = cfg.get("extra")
     return model_name, mode_id, think_mode, None, extra
