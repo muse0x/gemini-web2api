@@ -180,54 +180,33 @@ gemini-3.8-flash@think=4   # automatic/shallowest
 
 ## Optional: Cookie for Pro and Argon
 
-Pro and Argon availability depends on the Google AI plan and account. Configure a cookie from an eligible Google account for these tiers:
+Pro and Argon availability depends on the Google AI plan and account. The repository includes a Chrome/Edge extension that exports the signed-in Gemini session and page metadata locally.
 
-```bash
-python gemini_web2api.py --cookie-file cookie.txt
+### Quick setup with Gemini Cookie Sync
+
+1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge, enable **Developer mode**, and choose **Load unpacked**.
+2. Select this repository's `gemini-cookie-sync-extension` folder.
+3. Open [Gemini](https://gemini.google.com/app), sign in to the eligible account, and refresh the page.
+4. Open the **Gemini Cookie Sync** extension and click **Inspect session**. When it says the session and XSRF are ready, click **Export gemini-auth.json** and save it as `gemini-auth.json` in the repository root.
+
+The extension reads the current Google session and Gemini page metadata in the browser, then downloads the JSON locally; it does not send the session to a server. `gemini-auth.json` contains login credentials and is already ignored by Git. Never paste or share it.
+
+From PowerShell at the repository root, run `setup.ps1` once if `config.json` does not exist. Then merge the exported values; this preserves the other server settings:
+
+```powershell
+$auth = Get-Content .\gemini-auth.json -Raw | ConvertFrom-Json
+$configPath = (Resolve-Path .\config.json).Path
+$config = Get-Content $configPath -Raw | ConvertFrom-Json
+$config | Add-Member -MemberType NoteProperty -Name cookie_file -Value (Resolve-Path .\gemini-auth.json).Path -Force
+$config | Add-Member -MemberType NoteProperty -Name auth_user -Value $auth.auth_user -Force
+$config | Add-Member -MemberType NoteProperty -Name xsrf_token -Value $auth.xsrf_token -Force
+if ($auth.gemini_bl) { $config | Add-Member -MemberType NoteProperty -Name gemini_bl -Value $auth.gemini_bl -Force }
+[System.IO.File]::WriteAllText($configPath, (($config | ConvertTo-Json -Depth 100) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
 ```
 
-### How to get cookies
+Restart the server so it reloads both files, then restart OpenCode and select `gemini-4-argon`. To start the server manually, run `python gemini_web2api.py` from the repository root. See [`gemini-cookie-sync-extension/SETUP.md`](gemini-cookie-sync-extension/SETUP.md) for the full steps. A valid session does not grant access to models the account's plan cannot use.
 
-1. Open Chrome, go to [gemini.google.com](https://gemini.google.com) and sign in with an eligible Google AI account
-2. Open DevTools (F12) → Application → Cookies → `https://gemini.google.com`
-3. Copy these cookie values: `SID`, `HSID`, `SSID`, `APISID`, `SAPISID`, `__Secure-1PSID`
-4. Create `cookie.txt` in this format:
-
-```
-SID=your_sid_value; HSID=your_hsid_value; SSID=your_ssid_value; APISID=your_apisid_value; SAPISID=your_sapisid_value; __Secure-1PSID=your_1psid_value
-```
-
-Or use the JSON format:
-```json
-{"cookie": "SID=xxx; HSID=xxx; SSID=xxx; APISID=xxx; SAPISID=xxx; __Secure-1PSID=xxx", "sapisid": "your_sapisid_value"}
-```
-
-**Alternative (browser extension)**: Use any "Export Cookies" extension to export cookies for `gemini.google.com` in Netscape format, then convert to the single-line format above.
-
-### Authenticated account path and XSRF token
-
-If the signed-in Gemini page URL contains an account index, such as:
-
-```
-https://gemini.google.com/u/1/app/...
-```
-
-set `auth_user` to that index. Authenticated web requests may also require the page XSRF token. In the rendered Gemini page source, this token is exposed as `SNlM0e`; pass it as `xsrf_token` in `config.json`. The server sends it as the `at` form field.
-
-Example:
-
-```json
-{
-  "cookie_file": "/app/cookie.txt",
-  "auth_user": "1",
-  "xsrf_token": "AOOh0P...",
-  "gemini_bl": "boq_assistant-bard-web-server_YYYYMMDD.xx_p0"
-}
-```
-
-If authenticated requests return HTTP 400 with an `xsrf` error, refresh Gemini Web, update `xsrf_token`, and make sure `auth_user` matches the `/u/<index>/` part of the browser URL.
-
-Pro and Argon routing depend on the signed-in account's Google AI plan and current model access. A valid cookie alone does not grant access to plan-restricted tiers.
+If **Inspect session** reports missing XSRF, refresh Gemini and inspect again. If an authenticated request still returns HTTP 400 with an `xsrf` error, export a fresh file and restart the server. The extension exports `auth_user`, `xsrf_token`, and `gemini_bl` alongside the cookie.
 
 ## Configuration
 

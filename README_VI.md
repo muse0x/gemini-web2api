@@ -172,23 +172,33 @@ gemini-3.8-flash@think=4   # tự động/nông nhất
 
 ## Cookie cho Pro và Argon
 
-Khả năng dùng Pro và Argon phụ thuộc vào gói Google AI và tài khoản đang đăng nhập. Cấu hình cookie từ tài khoản có quyền sử dụng các cấp model này:
+Khả năng dùng Pro và Argon phụ thuộc vào gói Google AI và tài khoản đang đăng nhập. Repository có sẵn extension Chrome/Edge để xuất phiên Gemini và metadata ngay trên máy.
 
-```bash
-python gemini_web2api.py --cookie-file cookie.txt
+### Setup nhanh bằng Gemini Cookie Sync
+
+1. Mở `chrome://extensions` trên Chrome hoặc `edge://extensions` trên Edge, bật **Developer mode**, rồi chọn **Load unpacked**.
+2. Chọn thư mục `gemini-cookie-sync-extension` trong repository này.
+3. Mở [Gemini](https://gemini.google.com/app), đăng nhập tài khoản có quyền dùng model rồi tải lại trang.
+4. Mở extension **Gemini Cookie Sync**, bấm **Inspect session**. Khi extension báo session và XSRF đã sẵn sàng, bấm **Export gemini-auth.json** và lưu thành `gemini-auth.json` vào thư mục gốc repository.
+
+Extension đọc phiên Google hiện tại và metadata của trang Gemini trong trình duyệt, sau đó tải JSON về máy; không gửi phiên đăng nhập lên server. `gemini-auth.json` chứa thông tin đăng nhập và đã được Git bỏ qua. Không dán hoặc chia sẻ file này.
+
+Mở PowerShell tại thư mục gốc repository, chạy `setup.ps1` một lần nếu chưa có `config.json`, rồi chạy lệnh dưới đây để gộp dữ liệu extension mà vẫn giữ cài đặt server khác:
+
+```powershell
+$auth = Get-Content .\gemini-auth.json -Raw | ConvertFrom-Json
+$configPath = (Resolve-Path .\config.json).Path
+$config = Get-Content $configPath -Raw | ConvertFrom-Json
+$config | Add-Member -MemberType NoteProperty -Name cookie_file -Value (Resolve-Path .\gemini-auth.json).Path -Force
+$config | Add-Member -MemberType NoteProperty -Name auth_user -Value $auth.auth_user -Force
+$config | Add-Member -MemberType NoteProperty -Name xsrf_token -Value $auth.xsrf_token -Force
+if ($auth.gemini_bl) { $config | Add-Member -MemberType NoteProperty -Name gemini_bl -Value $auth.gemini_bl -Force }
+[System.IO.File]::WriteAllText($configPath, (($config | ConvertTo-Json -Depth 100) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
 ```
 
-1. Mở Chrome, truy cập [gemini.google.com](https://gemini.google.com) và đăng nhập bằng tài khoản phù hợp.
-2. Mở DevTools (F12) → Application → Cookies → `https://gemini.google.com`.
-3. Sao chép các giá trị `SID`, `HSID`, `SSID`, `APISID`, `SAPISID`, `__Secure-1PSID` vào `cookie.txt` theo định dạng:
+Khởi động lại server để nạp lại hai file, rồi mở lại OpenCode và chọn `gemini-4-argon`. Nếu chạy server thủ công, mở PowerShell tại thư mục repository rồi chạy `python gemini_web2api.py`. Xem đầy đủ các bước tại [`gemini-cookie-sync-extension/SETUP.md`](gemini-cookie-sync-extension/SETUP.md). Phiên đăng nhập hợp lệ không tự cấp quyền cho model mà gói Google của tài khoản không hỗ trợ.
 
-```
-SID=your_sid_value; HSID=your_hsid_value; SSID=your_ssid_value; APISID=your_apisid_value; SAPISID=your_sapisid_value; __Secure-1PSID=your_1psid_value
-```
-
-Nếu URL Gemini có chỉ số tài khoản như `https://gemini.google.com/u/1/app/...`, đặt `auth_user` thành `1`. Request đã đăng nhập cũng có thể cần XSRF token `SNlM0e`; đặt token đó vào `xsrf_token` trong `config.json`. Nếu gặp HTTP 400 có lỗi `xsrf`, hãy tải lại Gemini Web và cập nhật token.
-
-Cookie hợp lệ không tự cấp quyền cho các model bị giới hạn theo gói.
+Nếu **Inspect session** báo thiếu XSRF, tải lại Gemini rồi kiểm tra lại. Nếu request vẫn trả HTTP 400 có lỗi `xsrf`, xuất lại file rồi khởi động lại server. Extension xuất `auth_user`, `xsrf_token` và `gemini_bl` cùng cookie.
 
 ## Cấu hình
 

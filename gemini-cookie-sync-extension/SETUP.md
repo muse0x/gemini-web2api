@@ -16,7 +16,7 @@ It saves them locally as `gemini-auth.json`.
 
 ## Install and export
 
-1. Open `chrome://extensions`
+1. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge
 2. Enable **Developer mode**
 3. Click **Load unpacked**
 4. Select the `gemini-cookie-sync-extension` folder
@@ -34,7 +34,30 @@ gemini_bl / cfb2h: present
 Session and XSRF are ready for export.
 ```
 
-## Apply it in `gemini-web2api`
+## Windows: apply it to this repository
+
+Save the downloaded `gemini-auth.json` in the repository root. If `config.json` does not exist yet, run `setup.ps1` once from PowerShell in the repository root to create it. Then run this block there; it keeps the other server settings and does not print the cookie:
+
+```powershell
+$auth = Get-Content .\gemini-auth.json -Raw | ConvertFrom-Json
+$configPath = (Resolve-Path .\config.json).Path
+$config = Get-Content $configPath -Raw | ConvertFrom-Json
+$config | Add-Member -MemberType NoteProperty -Name cookie_file -Value (Resolve-Path .\gemini-auth.json).Path -Force
+$config | Add-Member -MemberType NoteProperty -Name auth_user -Value $auth.auth_user -Force
+$config | Add-Member -MemberType NoteProperty -Name xsrf_token -Value $auth.xsrf_token -Force
+if ($auth.gemini_bl) { $config | Add-Member -MemberType NoteProperty -Name gemini_bl -Value $auth.gemini_bl -Force }
+[System.IO.File]::WriteAllText($configPath, (($config | ConvertTo-Json -Depth 100) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+```
+
+Stop the current server and start it again from the repository root so it reloads both files:
+
+```powershell
+python .\gemini_web2api.py
+```
+
+Then restart OpenCode and select `gemini-4-argon`. Keep `gemini-auth.json` private; it is already ignored by Git. The cookie grants only the access the Google account's plan permits.
+
+## Linux/WSL: apply it in `gemini-web2api`
 
 Move the exported file into the project:
 
